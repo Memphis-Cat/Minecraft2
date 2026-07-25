@@ -13,6 +13,9 @@ public:
     void ApplyMouseDelta(double dx,double dy,double sensitivity=0.5);
     Vec3 Position() const{return position_;}
     Vec3 EyePosition() const{return {position_.x,position_.y+(sneaking_?1.54:1.62),position_.z};}
+    Vec3 InterpolatedPosition(double alpha) const;
+    Vec3 InterpolatedEyePosition(double alpha) const;
+    double InterpolatedCameraBob(double alpha) const;
     Vec3 LookDirection() const;
     float YawDegrees() const{return yaw_;}
     float PitchDegrees() const{return pitch_;}
@@ -29,11 +32,12 @@ private:
 
     // X/Z are the world origin; Y is above the ten-block built-in flat terrain.
     Vec3 position_{0.5,11.0,0.5};
+    Vec3 previousPosition_{0.5,11.0,0.5};
     Vec3 velocity_{};
     float yaw_{0.0f},pitch_{0.0f};
     bool onGround_{false},horizontalCollision_{false},sneaking_{false},sprinting_{false};
     bool wasForward_{false};
     int sprintTapTicks_{};
-    double walked_{},cameraBob_{};
+    double walked_{},cameraBob_{},previousCameraBob_{};
 };
 }
