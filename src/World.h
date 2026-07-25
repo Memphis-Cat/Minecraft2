@@ -9,8 +9,8 @@ struct VoxelVertex {
     uint32_t texture{};
     uint32_t color{0xFFFFFFFFu};
 };
-struct MeshData { std::vector<VoxelVertex> vertices; std::vector<uint32_t> indices; uint64_t revision{}; };
-struct RayHit { Int3 block; Int3 previous; Int3 normal; BlockId id{}; double distance{}; };
+struct MeshData {std::vector<VoxelVertex> vertices;std::vector<uint32_t> indices;uint64_t revision{};};
+struct RayHit {Int3 block;Int3 previous;Int3 normal;BlockId id{};double distance{};};
 
 class Chunk {
 public:
@@ -31,8 +31,8 @@ private:
 
 class World {
 public:
-    explicit World(const BlockRegistry& blocks):blocks_(blocks){}
-    void LoadLayerProfile(const std::filesystem::path& file, WarningLog& warnings);
+    World(const BlockRegistry& blocks,const std::filesystem::path& assetRoot,WarningLog& warnings);
+    void LoadLayerProfile(const std::filesystem::path& file,WarningLog& warnings);
     void UpdateStreaming(const Vec3& playerPosition,int renderDistance=8);
     BlockId GetBlock(int x,int y,int z) const;
     bool IsSolid(int x,int y,int z) const;
@@ -42,12 +42,17 @@ public:
     const std::unordered_map<ChunkCoord,std::unique_ptr<Chunk>,ChunkCoordHash>& Chunks() const{return chunks_;}
     std::vector<ChunkCoord> TakeUnloaded();
 private:
-    struct Layer { BlockId id{}; int count{}; };
+    struct Layer {BlockId id{};int count{};};
+    void UseBuiltInLayers(WarningLog& warnings);
     void Generate(Chunk& chunk);
     MeshData BuildMesh(Chunk& chunk) const;
     void MarkDirtyAt(int wx,int wz);
+    std::array<float,3> GrassTintForChunk(ChunkCoord coord) const;
+
     const BlockRegistry& blocks_;
     std::vector<Layer> layers_;
+    std::vector<uint8_t> grassColorMap_;
+    uint32_t grassColorMapWidth_{},grassColorMapHeight_{};
     std::unordered_map<ChunkCoord,std::unique_ptr<Chunk>,ChunkCoordHash> chunks_;
     std::vector<ChunkCoord> unloaded_;
 };
