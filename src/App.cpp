@@ -52,7 +52,8 @@ int App::Run(HINSTANCE instance,int showCommand){
         for(auto& update:world_->BuildDirtyMeshes(3))renderer_.UploadChunk(update.first,update.second);
         currentHit_=world_->Raycast(player_.EyePosition(),player_.LookDirection(),kReach);
         const int visibleStage=(currentHit_&&breakingBlock_&&*breakingBlock_==currentHit_->block)?destroyStage_:-1;
-        renderer_.Render(player_,currentHit_,visibleStage);
+        const double interpolationAlpha=std::clamp(accumulator/kTickSeconds,0.0,1.0);
+        renderer_.Render(player_,currentHit_,visibleStage,interpolationAlpha,world_->GameTime());
     }
 
     SetMouseCaptured(false);
@@ -144,6 +145,7 @@ InputState App::PollInput() const{
 void App::FixedTick(){
     const InputState input=PollInput();
     player_.Tick(input,*world_);
+    world_->Tick();
     world_->UpdateStreaming(player_.Position());
     const auto hit=world_->Raycast(player_.EyePosition(),player_.LookDirection(),kReach);
     UpdateBreaking(input,hit);
@@ -161,7 +163,6 @@ void App::UpdateBreaking(const InputState& input,const std::optional<RayHit>& hi
         breakingBlock_.reset();breakingTicks_=0;destroyStage_=-1;
         return;
     }
-    // 0-10%, 10-20%, ... 90-100% map directly to destroy_stage_0 through 9.
     destroyStage_=std::clamp((breakingTicks_*10)/definition.breakTicks,0,9);
 }
 }
