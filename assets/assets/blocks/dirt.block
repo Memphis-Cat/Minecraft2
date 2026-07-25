@@ -1,0 +1,4 @@
+hardness=0.5
+break_ticks=15
+texture=dirt
+solid=true

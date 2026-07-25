@@ -1,0 +1,5 @@
+# Top to bottom. The generator reverses this list when filling Y from zero.
+grass=1
+dirt=3
+stone=5
+bedrock=1
