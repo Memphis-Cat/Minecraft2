@@ -9,7 +9,7 @@ namespace mc {
 namespace {
 constexpr char kVoxelShader[] = R"(
 cbuffer Frame : register(b0) { row_major float4x4 viewProjection; };
-struct VSIn { float3 position:POSITION; float2 uv:TEXCOORD0; uint sliceIndex:TEXINDEX0; float4 color:COLOR0; };
+struct VSIn { float3 position:POSITION; float2 uv:TEXCOORD0; uint sliceIndex:TEXCOORD1; float4 color:COLOR0; };
 struct PSIn { float4 position:SV_POSITION; float3 uv:TEXCOORD0; float4 color:COLOR0; };
 PSIn VSMain(VSIn i){ PSIn o; o.position=mul(float4(i.position,1),viewProjection); o.uv=float3(i.uv,i.sliceIndex); o.color=i.color; return o; }
 Texture2DArray tex:register(t0); SamplerState pointSampler:register(s0);
@@ -90,7 +90,7 @@ bool Renderer::CreateShaders(){
     hr=Compile(kVoxelShader,"PSMain","ps_5_0",ps,errors);if(FAILED(hr))return Fail(L"D3DCompile voxel pixel shader",hr,Widen(errors));
     hr=device_->CreateVertexShader(vs->GetBufferPointer(),vs->GetBufferSize(),nullptr,voxelVs_.GetAddressOf());if(FAILED(hr))return Fail(L"CreateVertexShader (voxel)",hr);
     hr=device_->CreatePixelShader(ps->GetBufferPointer(),ps->GetBufferSize(),nullptr,voxelPs_.GetAddressOf());if(FAILED(hr))return Fail(L"CreatePixelShader (voxel)",hr);
-    D3D11_INPUT_ELEMENT_DESC vl[]={{"POSITION",0,DXGI_FORMAT_R32G32B32_FLOAT,0,0,D3D11_INPUT_PER_VERTEX_DATA,0},{"TEXCOORD",0,DXGI_FORMAT_R32G32_FLOAT,0,12,D3D11_INPUT_PER_VERTEX_DATA,0},{"TEXINDEX",0,DXGI_FORMAT_R32_UINT,0,20,D3D11_INPUT_PER_VERTEX_DATA,0},{"COLOR",0,DXGI_FORMAT_R8G8B8A8_UNORM,0,24,D3D11_INPUT_PER_VERTEX_DATA,0}};
+    D3D11_INPUT_ELEMENT_DESC vl[]={{"POSITION",0,DXGI_FORMAT_R32G32B32_FLOAT,0,0,D3D11_INPUT_PER_VERTEX_DATA,0},{"TEXCOORD",0,DXGI_FORMAT_R32G32_FLOAT,0,12,D3D11_INPUT_PER_VERTEX_DATA,0},{"TEXCOORD",1,DXGI_FORMAT_R32_UINT,0,20,D3D11_INPUT_PER_VERTEX_DATA,0},{"COLOR",0,DXGI_FORMAT_R8G8B8A8_UNORM,0,24,D3D11_INPUT_PER_VERTEX_DATA,0}};
     hr=device_->CreateInputLayout(vl,4,vs->GetBufferPointer(),vs->GetBufferSize(),voxelLayout_.GetAddressOf());if(FAILED(hr))return Fail(L"CreateInputLayout (voxel)",hr);
     hr=Compile(kColorShader,"VSMain","vs_5_0",vs,errors);if(FAILED(hr))return Fail(L"D3DCompile color vertex shader",hr,Widen(errors));
     hr=Compile(kColorShader,"PSMain","ps_5_0",ps,errors);if(FAILED(hr))return Fail(L"D3DCompile color pixel shader",hr,Widen(errors));
