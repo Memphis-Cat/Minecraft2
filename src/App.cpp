@@ -3,11 +3,11 @@
 
 namespace mc {
 int App::Run(HINSTANCE instance,int showCommand){
-    if(FAILED(CoInitializeEx(nullptr,COINIT_MULTITHREADED))){MessageBoxW(nullptr,L"COM initialization failed.",L"Minecraft2",MB_OK|MB_ICONERROR);return 1;}
+    HRESULT comResult=CoInitializeEx(nullptr,COINIT_MULTITHREADED);if(FAILED(comResult)&&comResult!=RPC_E_CHANGED_MODE){MessageBoxW(nullptr,L"COM initialization failed.",L"Minecraft2",MB_OK|MB_ICONERROR);return 1;}
     assetRoot_=FindAssetRoot();blocks_.Discover(assetRoot_,warnings_);textures_.Build(assetRoot_,blocks_.RequiredTextureNames(),warnings_);blocks_.ResolveTextures(textures_);
     world_=std::make_unique<World>(blocks_);world_->LoadLayerProfile(assetRoot_/L"worldgen"/L"flat_overworld.layers",warnings_);world_->UpdateStreaming(player_.Position());
-    if(!CreateMainWindow(instance,showCommand)){CoUninitialize();return 1;}
-    if(!renderer_.Initialize(window_,clientWidth_,clientHeight_,textures_,warnings_)){MessageBoxW(window_,L"Direct3D 11 initialization failed.",L"Minecraft2",MB_OK|MB_ICONERROR);CoUninitialize();return 1;}
+    if(!CreateMainWindow(instance,showCommand)){if(SUCCEEDED(comResult))CoUninitialize();return 1;}
+    if(!renderer_.Initialize(window_,clientWidth_,clientHeight_,textures_,warnings_)){std::wstring message=L"Direct3D 11 initialization failed.\n\n";message+=renderer_.LastError();MessageBoxW(window_,message.c_str(),L"Minecraft2",MB_OK|MB_ICONERROR);if(SUCCEEDED(comResult))CoUninitialize();return 1;}
     if(!warnings_.Empty())MessageBoxW(window_,warnings_.Format().c_str(),L"Minecraft2 — missing textures",MB_OK|MB_ICONWARNING);
     for(auto& update:world_->BuildDirtyMeshes(256))renderer_.UploadChunk(update.first,update.second);
     SetMouseCaptured(true);
@@ -25,7 +25,7 @@ int App::Run(HINSTANCE instance,int showCommand){
         int visibleStage=(currentHit_&&breakingBlock_&&*breakingBlock_==currentHit_->block)?destroyStage_:-1;
         renderer_.Render(player_,currentHit_,visibleStage);
     }
-    SetMouseCaptured(false);CoUninitialize();return static_cast<int>(msg.wParam);
+    SetMouseCaptured(false);if(SUCCEEDED(comResult))CoUninitialize();return static_cast<int>(msg.wParam);
 }
 
 bool App::CreateMainWindow(HINSTANCE instance,int showCommand){
