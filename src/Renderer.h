@@ -41,7 +41,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D11InputLayout> voxelLayout_,colorLayout_;
     Microsoft::WRL::ComPtr<ID3D11Buffer> frameCb_,overlayVb_,overlayIb_,lineVb_;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> textureArray_;
-    Microsoft::WRL::ComPtr<ID11SymplerState> sampler_;
+    Microsoft::WRL::ComPtr<ID3D11SamplerState> sampler_;
     Microsoft::WRL::ComPtr<ID3D11RasterizerState> solidRaster_,overlayRaster_,lineRaster_;
     Microsoft::WRL::ComPtr<ID3D11BlendState> alphaBlend_;
     Microsoft::WRL::ComPtr<ID3D11DepthStencilState> depthState_;
