@@ -1,0 +1,10 @@
+# ninja log v7
+62	5760	8067098180879833	CMakeFiles/Minecraft2.dir/src/Player.cpp.obj	58bdfb8a99797097
+45	10544	8067098180682922	CMakeFiles/Minecraft2.dir/src/Blocks.cpp.obj	c02ec5e782969419
+27	10770	8067098180509570	CMakeFiles/Minecraft2.dir/src/main.cpp.obj	653bf8f83307ae8
+86	11601	8067098181096742	CMakeFiles/Minecraft2.dir/src/RendererDraw.cpp.obj	818044f000ea6b34
+53	11933	8067098180773465	CMakeFiles/Minecraft2.dir/src/World.cpp.obj	338e7bf8c4b4b550
+32	12108	8067098180562453	CMakeFiles/Minecraft2.dir/src/App.cpp.obj	16a817a1122c692d
+72	12136	8067098181016586	CMakeFiles/Minecraft2.dir/src/RendererCore.cpp.obj	31823dac43b512ed
+39	12418	8067098180633000	CMakeFiles/Minecraft2.dir/src/Assets.cpp.obj	95b6ec4e8615513f
+12418	13236	8067098304426325	Minecraft2.exe	3cb2bf675a54a46
