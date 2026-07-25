@@ -38,9 +38,16 @@ target_link_libraries(Minecraft2 PRIVATE
     shell32
 )
 
+# Keep one unambiguous runtime layout:
+#   Minecraft2.exe
+#   assets/blocks
+#   assets/textures
+#   assets/worldgen
 add_custom_command(TARGET Minecraft2 POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_SOURCE_DIR}/assets"
+    COMMAND ${CMAKE_COMMAND} -E rm -rf
         "$<TARGET_FILE_DIR:Minecraft2>/assets"
-    COMMENT "Copying Minecraft assets"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/assets/assets"
+        "$<TARGET_FILE_DIR:Minecraft2>/assets"
+    COMMENT "Copying Minecraft assets beside the executable"
 )
