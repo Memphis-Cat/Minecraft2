@@ -12,15 +12,19 @@ public:
     void Resize(int width,int height);
     void UploadChunk(ChunkCoord coord,const MeshData& mesh);
     void RemoveChunk(ChunkCoord coord);
-    void Render(const Player& player,const std::optional<RayHit>& target,int destroyStage);
+    void Render(const Player& player,const std::optional<RayHit>& target,int destroyStage,double interpolationAlpha,uint64_t worldTime);
     const std::wstring& LastError() const noexcept{return lastError_;}
 private:
     struct GpuChunk {Microsoft::WRL::ComPtr<ID3D11Buffer> vb,ib;uint32_t indexCount{};uint64_t revision{};};
-    struct FrameConstants {DirectX::XMFLOAT4X4 viewProjection{};};
+    struct FrameConstants {
+        DirectX::XMFLOAT4X4 viewProjection{};
+        float skyDarken{};
+        float daylight{1.0f};
+        float padding[2]{};
+    };
     struct ColorVertex {float x,y,z;uint32_t color;};
     struct SpriteVertex {float x,y,z,u,v;uint32_t color;};
     struct UiVertex {float x,y,u,v;};
-    struct Plane {float a,b,c,d;};
 
     bool CreateDevice(HWND window);
     bool CreateTargets(int width,int height);
@@ -29,13 +33,11 @@ private:
     bool CreateStandaloneTextures(const std::filesystem::path& assetRoot,WarningLog& warnings);
     bool CreateStates();
     bool Fail(const wchar_t* stage,HRESULT hr,const std::wstring& detail={});
-    std::array<Plane,6> ExtractFrustum(const DirectX::XMFLOAT4X4& matrix) const;
-    bool Visible(ChunkCoord coord,const std::array<Plane,6>& planes) const;
-    void DrawEnvironment(const Player& player);
+    void DrawEnvironment(const Player& player,double interpolationAlpha,uint64_t worldTime);
     void DrawCrosshair();
     void DrawCracks(const RayHit& hit,uint16_t textureSlice);
     void DrawOutline(const RayHit& hit);
-    void UpdateFrameConstants(const Player& player);
+    void UpdateFrameConstants(const Player& player,double interpolationAlpha,uint64_t worldTime);
 
     int width_{1},height_{1};
     Microsoft::WRL::ComPtr<ID3D11Device> device_;
@@ -56,6 +58,7 @@ private:
     std::unordered_map<ChunkCoord,GpuChunk,ChunkCoordHash> chunks_;
     std::array<uint16_t,10> destroyStages_{};
     uint32_t iconsWidth_{},iconsHeight_{};
+    float daylight_{1.0f},skyDarken_{};
     DirectX::XMFLOAT4X4 currentViewProjection_{};
     std::wstring lastError_;
 };
