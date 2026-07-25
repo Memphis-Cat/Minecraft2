@@ -9,9 +9,9 @@ namespace mc {
 namespace {
 constexpr char kVoxelShader[] = R"(
 cbuffer Frame : register(b0) { row_major float4x4 viewProjection; };
-struct VSIn { float3 position:POSITION; float2 uv:TEXCOORD0; uint texture:TEXINDEX0; float4 color:COLOR0; };
+struct VSIn { float3 position:POSITION; float2 uv:TEXCOORD0; uint textureIndex:TEXINDEX0; float4 color:COLOR0; };
 struct PSIn { float4 position:SV_POSITION; float3 uv:TEXCOORD0; float4 color:COLOR0; };
-PSIn VSMain(VSIn i){ PSIn o; o.position=mul(float4(i.position,1),viewProjection); o.uv=float3(i.uv,i.texture); o.color=i.color; return o; }
+PSIn VSMain(VSIn i){ PSIn o; o.position=mul(float4(i.position,1),viewProjection); o.uv=float3(i.uv,i.textureIndex); o.color=i.color; return o; }
 Texture2DArray tex:register(t0); SamplerState pointSampler:register(s0);
 float4 PSMain(PSIn i):SV_TARGET { float4 c=tex.Sample(pointSampler,i.uv)*i.color; clip(c.a-0.01); return c; }
 )";
