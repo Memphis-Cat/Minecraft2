@@ -25,6 +25,9 @@ private:
     bool SupportedAt(const Vec3& p,const World& world) const;
     double ClipAxis(const Aabb& box,double amount,int axis,const World& world) const;
     void Move(Vec3 delta,const World& world);
+    void Respawn();
+
+    // X/Z are the world origin; Y is above the ten-block built-in flat terrain.
     Vec3 position_{0.5,11.0,0.5};
     Vec3 velocity_{};
     float yaw_{0.0f},pitch_{0.0f};
