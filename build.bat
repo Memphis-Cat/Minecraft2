@@ -34,6 +34,17 @@ if not exist "CMakeLists.txt" (
     exit /b 1
 )
 
+rem Refuse to compile unresolved Git merge markers. They create hundreds of fake C++ errors.
+set "HAS_CONFLICTS="
+for %%F in (CMakeLists.txt src\*.cpp src\*.h) do (
+    findstr /C:"<<<<<<<" /C:"=======" /C:">>>>>>>" "%%F" >nul 2>nul && (
+        echo ERROR: Unresolved Git conflict markers in %%F
+        set "HAS_CONFLICTS=1"
+    )
+)
+if defined HAS_CONFLICTS goto :merge_conflict
+if exist ".git\MERGE_HEAD" goto :merge_conflict
+
 rem Ninja is only a build runner; load MSVC when this is a normal cmd.exe.
 where cl >nul 2>nul
 if errorlevel 1 (
@@ -54,8 +65,20 @@ echo MSVC compiler found:
 where cl
 echo.
 
+rem Stop the prior game instance so the linker can replace Minecraft2.exe.
+taskkill /F /IM Minecraft2.exe >nul 2>nul
+
 if /I "%~1"=="clean" (
     if exist "build" rmdir /s /q "build"
+)
+
+rem A CMake build directory cannot switch between Visual Studio and Ninja generators.
+if exist "build\CMakeCache.txt" (
+    findstr /C:"CMAKE_GENERATOR:INTERNAL=Ninja" "build\CMakeCache.txt" >nul 2>nul
+    if errorlevel 1 (
+        echo Removing build directory created with a different CMake generator...
+        rmdir /s /q "build"
+    )
 )
 
 rem Remove a failed cache created before the compiler environment was loaded.
@@ -64,14 +87,19 @@ if exist "build\CMakeCache.txt" (
     if not errorlevel 1 rmdir /s /q "build"
 )
 
+if exist "build" if not exist "build\CMakeCache.txt" rmdir /s /q "build"
+
 echo [1/2] Configuring Ninja Release build...
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-if errorlevel 1 goto :failed
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release || goto :failed
 
 echo.
 echo [2/2] Building...
-cmake --build build --parallel
-if errorlevel 1 goto :failed
+cmake --build build --parallel || goto :failed
+
+if not exist "build\Minecraft2.exe" (
+    echo ERROR: The compiler reported success but build\Minecraft2.exe is missing.
+    goto :failed
+)
 
 echo.
 echo ========================================
@@ -85,10 +113,6 @@ if /I "%~2"=="run" goto :run
 goto :success
 
 :run
-if not exist "build\Minecraft2.exe" (
-    echo ERROR: build\Minecraft2.exe was not created.
-    goto :failed
-)
 echo Starting Minecraft2...
 start "" "build\Minecraft2.exe"
 
@@ -96,12 +120,24 @@ start "" "build\Minecraft2.exe"
 pause
 exit /b 0
 
+:merge_conflict
+echo.
+echo ========================================
+echo SOURCE REPAIR REQUIRED
+echo ========================================
+echo The repository contains an unfinished Git merge.
+echo Run the repair commands supplied with this build, then try again.
+echo Your assets folder does not need to be deleted.
+echo.
+pause
+exit /b 2
+
 :failed
 echo.
 echo ========================================
 echo BUILD FAILED
 echo ========================================
-echo Check the first CMake or compiler error above.
+echo Check the first CMake, compiler, or linker error above.
 echo.
 pause
 exit /b 1
