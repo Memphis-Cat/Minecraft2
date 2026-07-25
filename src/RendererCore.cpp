@@ -10,16 +10,29 @@ using namespace DirectX;
 namespace mc {
 namespace {
 constexpr char kVoxelShader[] = R"(
-cbuffer Frame : register(b0) { row_major float4x4 viewProjection; };
+cbuffer Frame : register(b0) { row_major float4x4 viewProjection; float skyDarken; float daylight; float2 padding; };
 struct VSIn { float3 position:POSITION; float2 uv:TEXCOORD0; uint sliceIndex:TEXCOORD1; float4 color:COLOR0; };
 struct PSIn { float4 position:SV_POSITION; float3 uv:TEXCOORD0; float4 color:COLOR0; };
 PSIn VSMain(VSIn input){ PSIn output; output.position=mul(float4(input.position,1),viewProjection); output.uv=float3(input.uv,input.sliceIndex); output.color=input.color; return output; }
 Texture2DArray blockTextures:register(t0); SamplerState pointSampler:register(s0);
-float4 PSMain(PSIn input):SV_TARGET { float4 color=blockTextures.Sample(pointSampler,input.uv)*input.color; clip(color.a-0.01); return color; }
+float4 PSMain(PSIn input):SV_TARGET {
+    float4 sampled=blockTextures.Sample(pointSampler,input.uv);
+    clip(sampled.a-0.01);
+    uint packedLight=(uint)round(saturate(input.color.a)*255.0);
+    float skyLevel=float((packedLight>>4)&15u);
+    float blockLevel=float(packedLight&15u);
+    float effectiveLevel=max(max(0.0,skyLevel-skyDarken),blockLevel);
+    float brightness=0.06+0.94*(effectiveLevel/15.0);
+    float blockAmount=blockLevel/15.0;
+    float3 neutralLight=float3(brightness,brightness,brightness);
+    float3 warmLight=float3(brightness*1.08,brightness*0.90,brightness*0.70);
+    float3 lightColor=lerp(neutralLight,warmLight,blockAmount);
+    return float4(sampled.rgb*input.color.rgb*lightColor,sampled.a);
+}
 )";
 
 constexpr char kColorShader[] = R"(
-cbuffer Frame : register(b0) { row_major float4x4 viewProjection; };
+cbuffer Frame : register(b0) { row_major float4x4 viewProjection; float skyDarken; float daylight; float2 padding; };
 struct VSIn { float3 position:POSITION; float4 color:COLOR0; };
 struct PSIn { float4 position:SV_POSITION; float4 color:COLOR0; };
 PSIn VSMain(VSIn input){ PSIn output; output.position=mul(float4(input.position,1),viewProjection); output.color=input.color; return output; }
@@ -27,7 +40,7 @@ float4 PSMain(PSIn input):SV_TARGET { return input.color; }
 )";
 
 constexpr char kSpriteShader[] = R"(
-cbuffer Frame : register(b0) { row_major float4x4 viewProjection; };
+cbuffer Frame : register(b0) { row_major float4x4 viewProjection; float skyDarken; float daylight; float2 padding; };
 Texture2D spriteTexture:register(t0); SamplerState pointSampler:register(s0);
 struct WorldIn { float3 position:POSITION; float2 uv:TEXCOORD0; float4 color:COLOR0; };
 struct UiIn { float2 position:POSITION; float2 uv:TEXCOORD0; };
@@ -139,7 +152,7 @@ bool Renderer::CreateShaders(){
     D3D11_INPUT_ELEMENT_DESC uiElements[]={{"POSITION",0,DXGI_FORMAT_R32G32_FLOAT,0,0,D3D11_INPUT_PER_VERTEX_DATA,0},{"TEXCOORD",0,DXGI_FORMAT_R32G32_FLOAT,0,8,D3D11_INPUT_PER_VERTEX_DATA,0}};
     hr=device_->CreateInputLayout(uiElements,2,vertexBlob->GetBufferPointer(),vertexBlob->GetBufferSize(),uiLayout_.GetAddressOf());if(FAILED(hr))return Fail(L"CreateInputLayout (UI)",hr);
 
-    D3D11_BUFFER_DESC constantBuffer{};constantBuffer.ByteWidth=sizeof(FrameConstants);constantBuffer.Usage=D3D11_USAGE_DEFAULT;constantBuffer.BindFlags=D3D11_BIND_CONSTANT_BUFFER;hr=device_->CreateBuffer(&constantBuffer,nullptr,frameCb_.GetAddressOf());return SUCCEEDED(hr)||Fail(L"CreateBuffer (frame constants)",hr);
+    static_assert(sizeof(FrameConstants)%16==0);D3D11_BUFFER_DESC constantBuffer{};constantBuffer.ByteWidth=sizeof(FrameConstants);constantBuffer.Usage=D3D11_USAGE_DEFAULT;constantBuffer.BindFlags=D3D11_BIND_CONSTANT_BUFFER;hr=device_->CreateBuffer(&constantBuffer,nullptr,frameCb_.GetAddressOf());return SUCCEEDED(hr)||Fail(L"CreateBuffer (frame constants)",hr);
 }
 
 bool Renderer::CreateTextureArray(const TexturePack& textures,WarningLog& warnings){
@@ -154,14 +167,15 @@ bool Renderer::CreateTextureArray(const TexturePack& textures,WarningLog& warnin
 
 bool Renderer::CreateStandaloneTextures(const std::filesystem::path& assetRoot,WarningLog& warnings){
     ComPtr<IWICImagingFactory> factory;HRESULT hr=CoCreateInstance(CLSID_WICImagingFactory2,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(factory.GetAddressOf()));if(FAILED(hr))hr=CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(factory.GetAddressOf()));if(FAILED(hr))return Fail(L"Create WIC imaging factory for standalone textures",hr);
-    const auto load=[&](const wchar_t* label,const std::filesystem::path& path,ComPtr<ID3D11ShaderResourceView>& view,uint32_t* width=nullptr,uint32_t* height=nullptr)->bool{
+    const auto load=[&](const wchar_t* label,const std::filesystem::path& path,ComPtr<ID3D11ShaderResourceView>& view,bool transparentBlack=false,uint32_t* width=nullptr,uint32_t* height=nullptr)->bool{
         if(!std::filesystem::is_regular_file(path)){warnings.Add(std::wstring(L"Missing ")+label+L": "+AbsoluteForMessage(path));return true;}
         DecodedImage image;if(!DecodePngRaw(factory.Get(),path,image)){warnings.Add(std::wstring(L"Unreadable ")+label+L": "+AbsoluteForMessage(path));return true;}
+        if(transparentBlack)for(size_t index=0;index+3<image.pixels.size();index+=4)if(image.pixels[index]<=12&&image.pixels[index+1]<=12&&image.pixels[index+2]<=12)image.pixels[index+3]=0;
         const HRESULT result=CreateTextureSrv(device_.Get(),image,view);if(FAILED(result)){const std::wstring stage=std::wstring(L"Create ")+label;return Fail(stage.c_str(),result,AbsoluteForMessage(path));}if(width)*width=image.width;if(height)*height=image.height;return true;
     };
-    if(!load(L"GUI icons texture",assetRoot/L"textures"/L"gui"/L"icons.png",iconsTexture_,&iconsWidth_,&iconsHeight_))return false;
+    if(!load(L"GUI icons texture",assetRoot/L"textures"/L"gui"/L"icons.png",iconsTexture_,false,&iconsWidth_,&iconsHeight_))return false;
     auto environmentDirectory=assetRoot/L"enviroment";if(!std::filesystem::is_directory(environmentDirectory)&&std::filesystem::is_directory(assetRoot/L"environment"))environmentDirectory=assetRoot/L"environment";
-    if(!load(L"sun texture",environmentDirectory/L"sun.png",sunTexture_))return false;if(!load(L"cloud texture",environmentDirectory/L"clouds.png",cloudsTexture_))return false;return true;
+    if(!load(L"sun texture",environmentDirectory/L"sun.png",sunTexture_,true))return false;if(!load(L"cloud texture",environmentDirectory/L"clouds.png",cloudsTexture_))return false;return true;
 }
 
 bool Renderer::CreateStates(){
