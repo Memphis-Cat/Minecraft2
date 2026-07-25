@@ -2,37 +2,215 @@
 #include <cstring>
 
 using namespace DirectX;
+
 namespace mc {
+namespace {
+Vec3 Cross(const Vec3& a,const Vec3& b){return {a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x};}
+}
+
 void Renderer::UploadChunk(ChunkCoord coord,const MeshData& mesh){
-    if(mesh.indices.empty()){chunks_.erase(coord);return;}GpuChunk gpu;gpu.indexCount=static_cast<uint32_t>(mesh.indices.size());gpu.revision=mesh.revision;
-    D3D11_BUFFER_DESC vd{};vd.ByteWidth=static_cast<UINT>(mesh.vertices.size()*sizeof(VoxelVertex));vd.Usage=D3D11_USAGE_IMMUTABLE;vd.BindFlags=D3D11_BIND_VERTEX_BUFFER;D3D11_SUBRESOURCE_DATA vi{mesh.vertices.data(),0,0};if(FAILED(device_->CreateBuffer(&vd,&vi,&gpu.vb)))return;
-    D3D11_BUFFER_DESC id{};id.ByteWidth=static_cast<UINT>(mesh.indices.size()*sizeof(uint32_t));id.Usage=D3D11_USAGE_IMMUTABLE;id.BindFlags=D3D11_BIND_INDEX_BUFFER;D3D11_SUBRESOURCE_DATA ii{mesh.indices.data(),0,0};if(FAILED(device_->CreateBuffer(&id,&ii,&gpu.ib)))return;chunks_[coord]=std::move(gpu);
+    if(mesh.indices.empty()){chunks_.erase(coord);return;}
+    GpuChunk gpu;
+    gpu.indexCount=static_cast<uint32_t>(mesh.indices.size());
+    gpu.revision=mesh.revision;
+    D3D11_BUFFER_DESC vertexDescription{};
+    vertexDescription.ByteWidth=static_cast<UINT>(mesh.vertices.size()*sizeof(VoxelVertex));
+    vertexDescription.Usage=D3D11_USAGE_IMMUTABLE;
+    vertexDescription.BindFlags=D3D11_BIND_VERTEX_BUFFER;
+    D3D11_SUBRESOURCE_DATA vertexData{mesh.vertices.data(),0,0};
+    if(FAILED(device_->CreateBuffer(&vertexDescription,&vertexData,&gpu.vb)))return;
+    D3D11_BUFFER_DESC indexDescription{};
+    indexDescription.ByteWidth=static_cast<UINT>(mesh.indices.size()*sizeof(uint32_t));
+    indexDescription.Usage=D3D11_USAGE_IMMUTABLE;
+    indexDescription.BindFlags=D3D11_BIND_INDEX_BUFFER;
+    D3D11_SUBRESOURCE_DATA indexData{mesh.indices.data(),0,0};
+    if(FAILED(device_->CreateBuffer(&indexDescription,&indexData,&gpu.ib)))return;
+    chunks_[coord]=std::move(gpu);
 }
+
 void Renderer::RemoveChunk(ChunkCoord coord){chunks_.erase(coord);}
+
 void Renderer::UpdateFrameConstants(const Player& player){
-    Vec3 e=player.EyePosition(),d=player.LookDirection();e.y+=player.CameraBob();XMVECTOR eye=XMVectorSet(float(e.x),float(e.y),float(e.z),1),at=XMVectorSet(float(e.x+d.x),float(e.y+d.y),float(e.z+d.z),1),up=XMVectorSet(0,1,0,0);
-    XMMATRIX vp=XMMatrixLookAtLH(eye,at,up)*XMMatrixPerspectiveFovLH(XMConvertToRadians(70.0f),float(width_)/float(height_),0.05f,512.0f);XMStoreFloat4x4(&currentViewProjection_,vp);FrameConstants cb{currentViewProjection_};context_->UpdateSubresource(frameCb_.Get(),0,nullptr,&cb,0,0);
+    Vec3 eyePosition=player.EyePosition();
+    const Vec3 direction=player.LookDirection();
+    eyePosition.y+=player.CameraBob();
+    const XMVECTOR eye=XMVectorSet(float(eyePosition.x),float(eyePosition.y),float(eyePosition.z),1);
+    const XMVECTOR target=XMVectorSet(float(eyePosition.x+direction.x),float(eyePosition.y+direction.y),float(eyePosition.z+direction.z),1);
+    const XMVECTOR up=XMVectorSet(0,1,0,0);
+    const XMMATRIX viewProjection=XMMatrixLookAtLH(eye,target,up)*XMMatrixPerspectiveFovLH(XMConvertToRadians(70.0f),float(width_)/float(height_),0.05f,512.0f);
+    XMStoreFloat4x4(&currentViewProjection_,viewProjection);
+    const FrameConstants constants{currentViewProjection_};
+    context_->UpdateSubresource(frameCb_.Get(),0,nullptr,&constants,0,0);
 }
-std::array<Renderer::Plane,6> Renderer::ExtractFrustum(const XMFLOAT4X4&m)const{
-    std::array<Plane,6> p={{{m._14+m._11,m._24+m._21,m._34+m._31,m._44+m._41},{m._14-m._11,m._24-m._21,m._34-m._31,m._44-m._41},{m._14+m._12,m._24+m._22,m._34+m._32,m._44+m._42},{m._14-m._12,m._24-m._22,m._34-m._32,m._44-m._42},{m._13,m._23,m._33,m._43},{m._14-m._13,m._24-m._23,m._34-m._33,m._44-m._43}}};
-    for(auto&v:p){float l=std::sqrt(v.a*v.a+v.b*v.b+v.c*v.c);if(l>0){v.a/=l;v.b/=l;v.c/=l;v.d/=l;}}return p;
+
+std::array<Renderer::Plane,6> Renderer::ExtractFrustum(const XMFLOAT4X4& matrix) const{
+    std::array<Plane,6> planes={{{matrix._14+matrix._11,matrix._24+matrix._21,matrix._34+matrix._31,matrix._44+matrix._41},{matrix._14-matrix._11,matrix._24-matrix._21,matrix._34-matrix._31,matrix._44-matrix._41},{matrix._14+matrix._12,matrix._24+matrix._22,matrix._34+matrix._32,matrix._44+matrix._42},{matrix._14-matrix._12,matrix._24-matrix._22,matrix._34-matrix._32,matrix._44-matrix._42},{matrix._13,matrix._23,matrix._33,matrix._43},{matrix._14-matrix._13,matrix._24-matrix._23,matrix._34-matrix._33,matrix._44-matrix._43}}};
+    for(auto& plane:planes){const float length=std::sqrt(plane.a*plane.a+plane.b*plane.b+plane.c*plane.c);if(length>0){plane.a/=length;plane.b/=length;plane.c/=length;plane.d/=length;}}
+    return planes;
 }
-bool Renderer::Visible(ChunkCoord c,const std::array<Plane,6>& ps)const{float minx=float(c.x*kChunkSize),maxx=minx+kChunkSize,minz=float(c.z*kChunkSize),maxz=minz+kChunkSize;for(const auto&p:ps){float x=p.a>=0?maxx:minx,y=p.b>=0?float(kWorldHeight):0,z=p.c>=0?maxz:minz;if(p.a*x+p.b*y+p.c*z+p.d<0)return false;}return true;}
+
+bool Renderer::Visible(ChunkCoord coord,const std::array<Plane,6>& planes) const{
+    const float minimumX=float(coord.x*kChunkSize),maximumX=minimumX+kChunkSize;
+    const float minimumZ=float(coord.z*kChunkSize),maximumZ=minimumZ+kChunkSize;
+    for(const auto& plane:planes){
+        const float x=plane.a>=0?maximumX:minimumX;
+        const float y=plane.b>=0?float(kWorldHeight):0;
+        const float z=plane.c>=0?maximumZ:minimumZ;
+        if(plane.a*x+plane.b*y+plane.c*z+plane.d<0)return false;
+    }
+    return true;
+}
+
+void Renderer::DrawEnvironment(const Player& player){
+    if(!sunTexture_&&!cloudsTexture_)return;
+
+    UINT stride=sizeof(SpriteVertex),offset=0;
+    context_->IASetInputLayout(spriteLayout_.Get());
+    context_->IASetVertexBuffers(0,1,environmentVb_.GetAddressOf(),&stride,&offset);
+    context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context_->VSSetShader(spriteVs_.Get(),nullptr,0);
+    context_->PSSetShader(spritePs_.Get(),nullptr,0);
+    context_->PSSetSamplers(0,1,sampler_.GetAddressOf());
+    context_->RSSetState(overlayRaster_.Get());
+    context_->OMSetDepthStencilState(skyDepthState_.Get(),0);
+    float blendFactor[4]={};
+    context_->OMSetBlendState(alphaBlend_.Get(),blendFactor,0xffffffff);
+
+    const auto draw=[&](ID3D11ShaderResourceView* texture,const std::array<SpriteVertex,6>& vertices){
+        if(!texture)return;
+        D3D11_MAPPED_SUBRESOURCE mapped{};
+        if(FAILED(context_->Map(environmentVb_.Get(),0,D3D11_MAP_WRITE_DISCARD,0,&mapped)))return;
+        std::memcpy(mapped.pData,vertices.data(),sizeof(vertices));
+        context_->Unmap(environmentVb_.Get(),0);
+        context_->PSSetShaderResources(0,1,&texture);
+        context_->Draw(6,0);
+    };
+
+    if(sunTexture_){
+        const Vec3 eye=player.EyePosition();
+        const Vec3 sunDirection=Normalize({-0.45,0.72,0.35});
+        const Vec3 center=eye+sunDirection*180.0;
+        Vec3 right=Normalize(Cross({0,1,0},sunDirection));
+        if(Length(right)<1e-6)right={1,0,0};
+        const Vec3 up=Normalize(Cross(sunDirection,right));
+        const double halfSize=18.0;
+        const Vec3 p0=center-right*halfSize+up*halfSize;
+        const Vec3 p1=center+right*halfSize+up*halfSize;
+        const Vec3 p2=center+right*halfSize-up*halfSize;
+        const Vec3 p3=center-right*halfSize-up*halfSize;
+        const uint32_t white=0xFFFFFFFFu;
+        draw(sunTexture_.Get(),{{{float(p0.x),float(p0.y),float(p0.z),0,0,white},{float(p1.x),float(p1.y),float(p1.z),1,0,white},{float(p2.x),float(p2.y),float(p2.z),1,1,white},{float(p0.x),float(p0.y),float(p0.z),0,0,white},{float(p2.x),float(p2.y),float(p2.z),1,1,white},{float(p3.x),float(p3.y),float(p3.z),0,1,white}}});
+    }
+
+    if(cloudsTexture_){
+        const Vec3 eye=player.EyePosition();
+        const float centerX=float(std::floor(eye.x/4.0)*4.0);
+        const float centerZ=float(std::floor(eye.z/4.0)*4.0);
+        const float y=32.0f,halfSize=128.0f,repeat=8.0f;
+        const uint32_t translucentWhite=0xCCFFFFFFu;
+        draw(cloudsTexture_.Get(),{{{centerX-halfSize,y,centerZ-halfSize,0,0,translucentWhite},{centerX+halfSize,y,centerZ-halfSize,repeat,0,translucentWhite},{centerX+halfSize,y,centerZ+halfSize,repeat,repeat,translucentWhite},{centerX-halfSize,y,centerZ-halfSize,0,0,translucentWhite},{centerX+halfSize,y,centerZ+halfSize,repeat,repeat,translucentWhite},{centerX-halfSize,y,centerZ+halfSize,0,repeat,translucentWhite}}});
+    }
+
+    context_->OMSetBlendState(nullptr,nullptr,0xffffffff);
+}
+
+void Renderer::DrawCrosshair(){
+    if(!iconsTexture_||iconsWidth_<15||iconsHeight_<15)return;
+    const float halfWidth=15.0f/float(width_);
+    const float halfHeight=15.0f/float(height_);
+    const float u0=0.5f/float(iconsWidth_),v0=0.5f/float(iconsHeight_);
+    const float u1=14.5f/float(iconsWidth_),v1=14.5f/float(iconsHeight_);
+    const std::array<UiVertex,6> vertices={{{-halfWidth,halfHeight,u0,v0},{halfWidth,halfHeight,u1,v0},{halfWidth,-halfHeight,u1,v1},{-halfWidth,halfHeight,u0,v0},{halfWidth,-halfHeight,u1,v1},{-halfWidth,-halfHeight,u0,v1}}};
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    if(FAILED(context_->Map(uiVb_.Get(),0,D3D11_MAP_WRITE_DISCARD,0,&mapped)))return;
+    std::memcpy(mapped.pData,vertices.data(),sizeof(vertices));
+    context_->Unmap(uiVb_.Get(),0);
+
+    UINT stride=sizeof(UiVertex),offset=0;
+    context_->IASetInputLayout(uiLayout_.Get());
+    context_->IASetVertexBuffers(0,1,uiVb_.GetAddressOf(),&stride,&offset);
+    context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context_->VSSetShader(uiVs_.Get(),nullptr,0);
+    context_->PSSetShader(uiPs_.Get(),nullptr,0);
+    context_->PSSetShaderResources(0,1,iconsTexture_.GetAddressOf());
+    context_->PSSetSamplers(0,1,sampler_.GetAddressOf());
+    context_->OMSetDepthStencilState(skyDepthState_.Get(),0);
+    context_->RSSetState(overlayRaster_.Get());
+    float blendFactor[4]={};
+    context_->OMSetBlendState(invertBlend_.Get(),blendFactor,0xffffffff);
+    context_->Draw(6,0);
+    context_->OMSetBlendState(nullptr,nullptr,0xffffffff);
+}
+
 void Renderer::DrawCracks(const RayHit& hit,uint16_t slice){
-    const float e=0.002f,x=float(hit.block.x)-e,y=float(hit.block.y)-e,z=float(hit.block.z)-e,s=1+2*e;std::vector<VoxelVertex> v;std::vector<uint32_t> idx;v.reserve(24);idx.reserve(36);
-    auto face=[&](std::array<XMFLOAT3,4> p){uint32_t b=uint32_t(v.size());for(int i=0;i<4;++i)v.push_back({p[i].x,p[i].y,p[i].z,float((i==1||i==2)?1:0),float(i>=2?1:0),slice,0xFFFFFFFF});idx.insert(idx.end(),{b,b+1,b+2,b,b+2,b+3});};
-    face({{{x,y,z},{x,y+s,z},{x,y+s,z+s},{x,y,z+s}}});face({{{x+s,y,z+s},{x+s,y+s,z+s},{x+s,y+s,z},{x+s,y,z}}});face({{{x,y,z+s},{x+s,y,z+s},{x+s,y,z},{x,y,z}}});face({{{x,y+s,z},{x+s,y+s,z},{x+s,y+s,z+s},{x,y+s,z+s}}});face({{{x+s,y,z},{x+s,y+s,z},{x,y+s,z},{x,y,z}}});face({{{x,y,z+s},{x,y+s,z+s},{x+s,y+s,z+s},{x+s,y,z+s}}});
-    D3D11_MAPPED_SUBRESOURCE m{};if(SUCCEEDED(context_->Map(overlayVb_.Get(),0,D3D11_MAP_WRITE_DISCARD,0,&m))){memcpy(m.pData,v.data(),v.size()*sizeof(VoxelVertex));context_->Unmap(overlayVb_.Get(),0);}if(SUCCEEDED(context_->Map(overlayIb_.Get(),0,D3D11_MAP_WRITE_DISCARD,0,&m))){memcpy(m.pData,idx.data(),idx.size()*sizeof(uint32_t));context_->Unmap(overlayIb_.Get(),0);}
-    UINT stride=sizeof(VoxelVertex),offset=0;context_->IASetInputLayout(voxelLayout_.Get());context_->IASetVertexBuffers(0,1,overlayVb_.GetAddressOf(),&stride,&offset);context_->IASetIndexBuffer(overlayIb_.Get(),DXGI_FORMAT_R32_UINT,0);context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);context_->RSSetState(overlayRaster_.Get());float blend[4]={};context_->OMSetBlendState(alphaBlend_.Get(),blend,0xffffffff);context_->DrawIndexed(36,0,0);context_->OMSetBlendState(nullptr,nullptr,0xffffffff);
+    const float epsilon=0.002f,x=float(hit.block.x)-epsilon,y=float(hit.block.y)-epsilon,z=float(hit.block.z)-epsilon,size=1+2*epsilon;
+    std::vector<VoxelVertex> vertices;
+    std::vector<uint32_t> indices;
+    vertices.reserve(24);indices.reserve(36);
+    const auto face=[&](std::array<XMFLOAT3,4> points){const uint32_t base=uint32_t(vertices.size());for(int i=0;i<4;++i)vertices.push_back({points[i].x,points[i].y,points[i].z,float((i==1||i==2)?1:0),float(i>=2?1:0),slice,0xFFFFFFFF});indices.insert(indices.end(),{base,base+1,base+2,base,base+2,base+3});};
+    face({{{x,y,z},{x,y+size,z},{x,y+size,z+size},{x,y,z+size}}});face({{{x+size,y,z+size},{x+size,y+size,z+size},{x+size,y+size,z},{x+size,y,z}}});face({{{x,y,z+size},{x+size,y,z+size},{x+size,y,z},{x,y,z}}});face({{{x,y+size,z},{x+size,y+size,z},{x+size,y+size,z+size},{x,y+size,z+size}}});face({{{x+size,y,z},{x+size,y+size,z},{x,y+size,z},{x,y,z}}});face({{{x,y,z+size},{x,y+size,z+size},{x+size,y+size,z+size},{x+size,y,z+size}}});
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    if(SUCCEEDED(context_->Map(overlayVb_.Get(),0,D3D11_MAP_WRITE_DISCARD,0,&mapped))){std::memcpy(mapped.pData,vertices.data(),vertices.size()*sizeof(VoxelVertex));context_->Unmap(overlayVb_.Get(),0);}
+    if(SUCCEEDED(context_->Map(overlayIb_.Get(),0,D3D11_MAP_WRITE_DISCARD,0,&mapped))){std::memcpy(mapped.pData,indices.data(),indices.size()*sizeof(uint32_t));context_->Unmap(overlayIb_.Get(),0);}
+    UINT stride=sizeof(VoxelVertex),offset=0;
+    context_->IASetInputLayout(voxelLayout_.Get());context_->IASetVertexBuffers(0,1,overlayVb_.GetAddressOf(),&stride,&offset);context_->IASetIndexBuffer(overlayIb_.Get(),DXGI_FORMAT_R32_UINT,0);context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);context_->RSSetState(overlayRaster_.Get());float blend[4]={};context_->OMSetBlendState(alphaBlend_.Get(),blend,0xffffffff);context_->DrawIndexed(36,0,0);context_->OMSetBlendState(nullptr,nullptr,0xffffffff);
 }
+
 void Renderer::DrawOutline(const RayHit& hit){
-    const float e=0.004f,x=float(hit.block.x)-e,y=float(hit.block.y)-e,z=float(hit.block.z)-e,s=1+2*e;XMFLOAT3 p[8]={{x,y,z},{x+s,y,z},{x+s,y,z+s},{x,y,z+s},{x,y+s,z},{x+s,y+s,z},{x+s,y+s,z+s},{x,y+s,z+s}};int edges[24]={0,1,1,2,2,3,3,0,4,5,5,6,6,7,7,4,0,4,1,5,2,6,3,7};ColorVertex v[24];for(int i=0;i<24;++i)v[i]={p[edges[i]].x,p[edges[i]].y,p[edges[i]].z,0xFF000000};D3D11_MAPPED_SUBRESOURCE m{};if(SUCCEEDED(context_->Map(lineVb_.Get(),0,D3D11_MAP_WRITE_DISCARD,0,&m))){memcpy(m.pData,v,sizeof(v));context_->Unmap(lineVb_.Get(),0);}UINT stride=sizeof(ColorVertex),offset=0;context_->IASetInputLayout(colorLayout_.Get());context_->IASetVertexBuffers(0,1,lineVb_.GetAddressOf(),&stride,&offset);context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINELIST);context_->VSSetShader(colorVs_.Get(),nullptr,0);context_->PSSetShader(colorPs_.Get(),nullptr,0);context_->RSSetState(lineRaster_.Get());context_->Draw(24,0);
+    std::array<ColorVertex,72> vertices{};
+    size_t output=0;
+    const int edges[24]={0,1,1,2,2,3,3,0,4,5,5,6,6,7,7,4,0,4,1,5,2,6,3,7};
+    for(const float epsilon:{0.004f,0.009f,0.014f}){
+        const float x=float(hit.block.x)-epsilon,y=float(hit.block.y)-epsilon,z=float(hit.block.z)-epsilon,size=1+2*epsilon;
+        const XMFLOAT3 points[8]={{x,y,z},{x+size,y,z},{x+size,y,z+size},{x,y,z+size},{x,y+size,z},{x+size,y+size,z},{x+size,y+size,z+size},{x,y+size,z+size}};
+        for(int edge=0;edge<24;++edge){const auto& point=points[edges[edge]];vertices[output++]={point.x,point.y,point.z,0xFF050505};}
+    }
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    if(SUCCEEDED(context_->Map(lineVb_.Get(),0,D3D11_MAP_WRITE_DISCARD,0,&mapped))){std::memcpy(mapped.pData,vertices.data(),sizeof(vertices));context_->Unmap(lineVb_.Get(),0);}
+    UINT stride=sizeof(ColorVertex),offset=0;
+    context_->IASetInputLayout(colorLayout_.Get());context_->IASetVertexBuffers(0,1,lineVb_.GetAddressOf(),&stride,&offset);context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINELIST);context_->VSSetShader(colorVs_.Get(),nullptr,0);context_->PSSetShader(colorPs_.Get(),nullptr,0);context_->RSSetState(lineRaster_.Get());context_->Draw(static_cast<UINT>(vertices.size()),0);
 }
+
 void Renderer::Render(const Player& player,const std::optional<RayHit>& target,int destroyStage){
-    float sky[4]={0.47f,0.67f,1.0f,1};context_->OMSetRenderTargets(1,rtv_.GetAddressOf(),dsv_.Get());context_->ClearRenderTargetView(rtv_.Get(),sky);context_->ClearDepthStencilView(dsv_.Get(),D3D11_CLEAR_DEPTH|D3D11_CLEAR_STENCIL,1,0);D3D11_VIEWPORT vp{0,0,float(width_),float(height_),0,1};context_->RSSetViewports(1,&vp);context_->OMSetDepthStencilState(depthState_.Get(),0);UpdateFrameConstants(player);
-    ID3D11Buffer* cb=frameCb_.Get();context_->VSSetConstantBuffers(0,1,&cb);context_->VSSetShader(voxelVs_.Get(),nullptr,0);context_->PSSetShader(voxelPs_.Get(),nullptr,0);context_->PSSetShaderResources(0,1,textureArray_.GetAddressOf());context_->PSSetSamplers(0,1,sampler_.GetAddressOf());context_->IASetInputLayout(voxelLayout_.Get());context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);context_->RSSetState(solidRaster_.Get());auto planes=ExtractFrustum(currentViewProjection_);
-    for(const auto&[coord,gpu]:chunks_){if(!Visible(coord,planes))continue;UINT stride=sizeof(VoxelVertex),offset=0;ID3D11Buffer* vb=gpu.vb.Get();context_->IASetVertexBuffers(0,1,&vb,&stride,&offset);context_->IASetIndexBuffer(gpu.ib.Get(),DXGI_FORMAT_R32_UINT,0);context_->DrawIndexed(gpu.indexCount,0,0);}
-    if(target){context_->VSSetShader(voxelVs_.Get(),nullptr,0);context_->PSSetShader(voxelPs_.Get(),nullptr,0);if(destroyStage>=0&&destroyStage<10)DrawCracks(*target,destroyStages_[destroyStage]);DrawOutline(*target);}
+    const float sky[4]={0.47f,0.67f,1.0f,1.0f};
+    context_->OMSetRenderTargets(1,rtv_.GetAddressOf(),dsv_.Get());
+    context_->ClearRenderTargetView(rtv_.Get(),sky);
+    context_->ClearDepthStencilView(dsv_.Get(),D3D11_CLEAR_DEPTH|D3D11_CLEAR_STENCIL,1,0);
+    const D3D11_VIEWPORT viewport{0,0,float(width_),float(height_),0,1};
+    context_->RSSetViewports(1,&viewport);
+    UpdateFrameConstants(player);
+    ID3D11Buffer* constants=frameCb_.Get();
+    context_->VSSetConstantBuffers(0,1,&constants);
+
+    DrawEnvironment(player);
+
+    context_->OMSetDepthStencilState(depthState_.Get(),0);
+    context_->VSSetShader(voxelVs_.Get(),nullptr,0);
+    context_->PSSetShader(voxelPs_.Get(),nullptr,0);
+    context_->PSSetShaderResources(0,1,textureArray_.GetAddressOf());
+    context_->PSSetSamplers(0,1,sampler_.GetAddressOf());
+    context_->IASetInputLayout(voxelLayout_.Get());
+    context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context_->RSSetState(solidRaster_.Get());
+    const auto planes=ExtractFrustum(currentViewProjection_);
+    for(const auto& [coord,gpu]:chunks_){
+        if(!Visible(coord,planes))continue;
+        UINT stride=sizeof(VoxelVertex),offset=0;
+        ID3D11Buffer* vertexBuffer=gpu.vb.Get();
+        context_->IASetVertexBuffers(0,1,&vertexBuffer,&stride,&offset);
+        context_->IASetIndexBuffer(gpu.ib.Get(),DXGI_FORMAT_R32_UINT,0);
+        context_->DrawIndexed(gpu.indexCount,0,0);
+    }
+
+    if(target){
+        context_->VSSetShader(voxelVs_.Get(),nullptr,0);
+        context_->PSSetShader(voxelPs_.Get(),nullptr,0);
+        context_->PSSetShaderResources(0,1,textureArray_.GetAddressOf());
+        if(destroyStage>=0&&destroyStage<10)DrawCracks(*target,destroyStages_[destroyStage]);
+        DrawOutline(*target);
+    }
+
+    DrawCrosshair();
     swapChain_->Present(1,0);
 }
 }
