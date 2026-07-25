@@ -38,14 +38,16 @@ target_link_libraries(Minecraft2 PRIVATE
     shell32
 )
 
-# Accept either repository layout:
+# Prefer the normal repository layout used by the current asset pack:
 #   assets/textures/blocks/*.png
-# or the original nested layout:
+# Fall back to the older nested layout only when the normal one is absent:
 #   assets/assets/textures/blocks/*.png
-set(MINECRAFT_ASSET_SOURCE "${CMAKE_SOURCE_DIR}/assets")
-if(EXISTS "${CMAKE_SOURCE_DIR}/assets/assets/textures/blocks")
+if(EXISTS "${CMAKE_SOURCE_DIR}/assets/textures/blocks")
+    set(MINECRAFT_ASSET_SOURCE "${CMAKE_SOURCE_DIR}/assets")
+elseif(EXISTS "${CMAKE_SOURCE_DIR}/assets/assets/textures/blocks")
     set(MINECRAFT_ASSET_SOURCE "${CMAKE_SOURCE_DIR}/assets/assets")
-elseif(NOT EXISTS "${CMAKE_SOURCE_DIR}/assets/textures/blocks")
+else()
+    set(MINECRAFT_ASSET_SOURCE "${CMAKE_SOURCE_DIR}/assets")
     message(WARNING "No block texture directory was found under assets/textures/blocks or assets/assets/textures/blocks")
 endif()
 
@@ -53,11 +55,11 @@ message(STATUS "Minecraft asset source: ${MINECRAFT_ASSET_SOURCE}")
 
 # Keep one unambiguous runtime layout:
 #   Minecraft2.exe
-#   assets/blocks
 #   assets/textures
-#   assets/worldgen
 #   assets/sounds
 #   assets/enviroment
+#   assets/blocks      (optional metadata)
+#   assets/worldgen    (optional terrain override)
 add_custom_command(TARGET Minecraft2 POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E rm -rf
         "$<TARGET_FILE_DIR:Minecraft2>/assets"
