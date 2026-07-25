@@ -4,6 +4,7 @@
 namespace mc {
 namespace {
 bool Intersects(const Aabb& a,const Aabb& b){return a.max.x>b.min.x&&a.min.x<b.max.x&&a.max.y>b.min.y&&a.min.y<b.max.y&&a.max.z>b.min.z&&a.min.z<b.max.z;}
+double Mix(double a,double b,double t){return a+(b-a)*t;}
 }
 
 Player::Player()=default;
@@ -58,7 +59,7 @@ void Player::Move(Vec3 delta,const World& world){
 
     const Vec3 requested=delta;
     const double largest=std::max({std::abs(delta.x),std::abs(delta.y),std::abs(delta.z)});
-    const int steps=std::max(1,static_cast<int>(std::ceil(largest/0.25)));
+    const int steps=std::max(1,static_cast<int>(std::ceil(largest/0.20)));
     const Vec3 step=delta*(1.0/steps);
     Vec3 moved{};
     bool hitGround=false;
@@ -93,15 +94,20 @@ void Player::Move(Vec3 delta,const World& world){
 
 void Player::Respawn(){
     position_={0.5,11.0,0.5};
+    previousPosition_=position_;
     velocity_={};
     onGround_=false;
     horizontalCollision_=false;
     sneaking_=false;
     sprinting_=false;
     cameraBob_=0.0;
+    previousCameraBob_=0.0;
 }
 
 void Player::Tick(const InputState& input,const World& world){
+    previousPosition_=position_;
+    previousCameraBob_=cameraBob_;
+
     // Push upward if a block edit or numerical edge case ever leaves the player intersecting terrain.
     for(int attempts=0;attempts<40&&Collides(BoxAt(position_),world);++attempts)position_.y+=0.05;
 
@@ -136,6 +142,17 @@ void Player::Tick(const InputState& input,const World& world){
 
     if(position_.y<-15.0)Respawn();
 }
+
+Vec3 Player::InterpolatedPosition(double alpha) const{
+    const double t=std::clamp(alpha,0.0,1.0);
+    return {Mix(previousPosition_.x,position_.x,t),Mix(previousPosition_.y,position_.y,t),Mix(previousPosition_.z,position_.z,t)};
+}
+Vec3 Player::InterpolatedEyePosition(double alpha) const{
+    Vec3 position=InterpolatedPosition(alpha);
+    position.y+=sneaking_?1.54:1.62;
+    return position;
+}
+double Player::InterpolatedCameraBob(double alpha) const{return Mix(previousCameraBob_,cameraBob_,std::clamp(alpha,0.0,1.0));}
 
 void Player::ApplyMouseDelta(double dx,double dy,double sensitivity){
     const double factor=sensitivity*0.6+0.2;
