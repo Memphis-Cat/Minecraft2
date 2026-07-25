@@ -13,6 +13,7 @@ public:
     void UploadChunk(ChunkCoord coord,const MeshData& mesh);
     void RemoveChunk(ChunkCoord coord);
     void Render(const Player& player,const std::optional<RayHit>& target,int destroyStage);
+    const std::wstring& LastError() const noexcept { return lastError_; }
 private:
     struct GpuChunk { Microsoft::WRL::ComPtr<ID3D11Buffer> vb,ib; uint32_t indexCount{}; uint64_t revision{}; };
     struct FrameConstants { DirectX::XMFLOAT4X4 viewProjection{}; };
@@ -23,6 +24,7 @@ private:
     bool CreateShaders();
     bool CreateTextureArray(const TexturePack& textures,WarningLog& warnings);
     bool CreateStates();
+    bool Fail(const wchar_t* stage,HRESULT hr,const std::wstring& detail={});
     std::array<Plane,6> ExtractFrustum(const DirectX::XMFLOAT4X4& m) const;
     bool Visible(ChunkCoord coord,const std::array<Plane,6>& planes) const;
     void DrawCracks(const RayHit& hit,uint16_t textureSlice);
@@ -48,5 +50,6 @@ private:
     std::unordered_map<ChunkCoord,GpuChunk,ChunkCoordHash> chunks_;
     std::array<uint16_t,10> destroyStages_{};
     DirectX::XMFLOAT4X4 currentViewProjection_{};
+    std::wstring lastError_;
 };
 }
