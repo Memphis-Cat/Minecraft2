@@ -8,7 +8,7 @@ int App::Run(HINSTANCE instance,int showCommand){
     world_=std::make_unique<World>(blocks_);world_->LoadLayerProfile(assetRoot_/L"worldgen"/L"flat_overworld.layers",warnings_);world_->UpdateStreaming(player_.Position());
     if(!CreateMainWindow(instance,showCommand)){if(SUCCEEDED(comResult))CoUninitialize();return 1;}
     if(!renderer_.Initialize(window_,clientWidth_,clientHeight_,textures_,warnings_)){std::wstring message=L"Direct3D 11 initialization failed.\n\n";message+=renderer_.LastError();MessageBoxW(window_,message.c_str(),L"Minecraft2",MB_OK|MB_ICONERROR);if(SUCCEEDED(comResult))CoUninitialize();return 1;}
-    if(!warnings_.Empty())MessageBoxW(window_,warnings_.Format().c_str(),L"Minecraft2 — missing textures",MB_OK|MB_ICONWARNING);
+    if(!warnings_.Empty())MessageBoxW(window_,warnings_.Format().c_str(),L"Minecraft2 - asset warnings",MB_OK|MB_ICONWARNING);
     for(auto& update:world_->BuildDirtyMeshes(256))renderer_.UploadChunk(update.first,update.second);
     SetMouseCaptured(true);
 
@@ -31,7 +31,7 @@ int App::Run(HINSTANCE instance,int showCommand){
 bool App::CreateMainWindow(HINSTANCE instance,int showCommand){
     WNDCLASSEXW wc{sizeof(wc)};wc.style=CS_HREDRAW|CS_VREDRAW|CS_OWNDC;wc.lpfnWndProc=WindowProc;wc.hInstance=instance;wc.hCursor=LoadCursor(nullptr,IDC_ARROW);wc.lpszClassName=L"Minecraft2Window";if(!RegisterClassExW(&wc))return false;
     RECT rect{0,0,clientWidth_,clientHeight_};AdjustWindowRectEx(&rect,WS_OVERLAPPEDWINDOW,FALSE,0);
-    window_=CreateWindowExW(0,wc.lpszClassName,L"Minecraft2 — Direct3D 11",WS_OVERLAPPEDWINDOW,CW_USEDEFAULT,CW_USEDEFAULT,rect.right-rect.left,rect.bottom-rect.top,nullptr,nullptr,instance,this);if(!window_)return false;
+    window_=CreateWindowExW(0,wc.lpszClassName,L"Minecraft2 - Direct3D 11",WS_OVERLAPPEDWINDOW,CW_USEDEFAULT,CW_USEDEFAULT,rect.right-rect.left,rect.bottom-rect.top,nullptr,nullptr,instance,this);if(!window_)return false;
     RAWINPUTDEVICE rid{0x01,0x02,RIDEV_INPUTSINK,window_};RegisterRawInputDevices(&rid,1,sizeof(rid));ShowWindow(window_,showCommand);UpdateWindow(window_);return true;
 }
 LRESULT CALLBACK App::WindowProc(HWND window,UINT message,WPARAM wParam,LPARAM lParam){
