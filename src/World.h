@@ -41,7 +41,7 @@ class World {
 public:
     World(const BlockRegistry& blocks,const std::filesystem::path& assetRoot,WarningLog& warnings);
     void LoadLayerProfile(const std::filesystem::path& file,WarningLog& warnings);
-    void Tick(){gameTime_=(gameTime_+1)%24000;}
+    void Tick(){++gameTime_;}
     uint64_t GameTime() const{return gameTime_;}
     void UpdateStreaming(const Vec3& playerPosition,int renderDistance=8);
     BlockId GetBlock(int x,int y,int z) const;
