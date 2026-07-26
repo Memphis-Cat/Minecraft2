@@ -148,6 +148,7 @@ void Renderer::Render(const Player& player,const std::optional<RayHit>& target,i
     for(const auto& [coord,gpu]:chunks_){(void)coord;UINT stride=sizeof(VoxelVertex),offset=0;ID3D11Buffer* vertexBuffer=gpu.vb.Get();context_->IASetVertexBuffers(0,1,&vertexBuffer,&stride,&offset);context_->IASetIndexBuffer(gpu.ib.Get(),DXGI_FORMAT_R32_UINT,0);context_->DrawIndexed(gpu.indexCount,0,0);}
 
     if(target){context_->VSSetShader(voxelVs_.Get(),nullptr,0);context_->PSSetShader(voxelPs_.Get(),nullptr,0);context_->PSSetShaderResources(0,1,textureArray_.GetAddressOf());if(destroyStage>=0&&destroyStage<10)DrawCracks(*target,destroyStages_[destroyStage]);DrawOutline(*target);}
+    DrawFirstPersonArm();
     DrawCrosshair();
     swapChain_->Present(1,0);
 }
