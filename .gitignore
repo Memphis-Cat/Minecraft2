@@ -1,8 +1,1 @@
 /build/
-/out/
-/.vs/
-CMakeSettings.json.user
-*.user
-*.suo
-*.VC.db
-*.VC.VC.opendb

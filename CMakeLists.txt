@@ -18,7 +18,6 @@ add_executable(Minecraft2 WIN32
     src/Player.cpp
     src/RendererCore.cpp
     src/RendererDraw.cpp
-    src/RendererArm.cpp
 )
 
 target_include_directories(Minecraft2 PRIVATE src)

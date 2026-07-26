@@ -15,7 +15,7 @@ int App::Run(HINSTANCE instance,int showCommand){
     world_->UpdateStreaming(player_.Position());
 
     if(!CreateMainWindow(instance,showCommand)){if(SUCCEEDED(comResult))CoUninitialize();return 1;}
-    if(!renderer_.Initialize(window_,clientWidth_,clientHeight_,textures_,assetRoot_,warnings_)||!renderer_.InitializeFirstPersonArm(assetRoot_,warnings_)){
+    if(!renderer_.Initialize(window_,clientWidth_,clientHeight_,textures_,assetRoot_,warnings_)){
         std::wstring message=L"Direct3D 11 initialization failed.\n\n";
         message+=renderer_.LastError();
         MessageBoxW(window_,message.c_str(),L"Minecraft2",MB_OK|MB_ICONERROR);
@@ -52,14 +52,7 @@ int App::Run(HINSTANCE instance,int showCommand){
         for(auto& update:world_->BuildDirtyMeshes(3))renderer_.UploadChunk(update.first,update.second);
         currentHit_=world_->Raycast(player_.EyePosition(),player_.LookDirection(),kReach);
         const int visibleStage=(currentHit_&&breakingBlock_&&*breakingBlock_==currentHit_->block)?destroyStage_:-1;
-        const double interpolationAlpha=std::clamp(accumulator/kTickSeconds,0.0,1.0);
-        float armSwingProgress=0.0f;
-        if(armSwinging_){
-            armSwingProgress=(float(armSwingTicks_)+float(interpolationAlpha))/6.0f;
-            if(armSwingProgress>=1.0f)armSwingProgress-=1.0f;
-        }
-        renderer_.SetFirstPersonSwing(armSwingProgress,armSwinging_);
-        renderer_.Render(player_,currentHit_,visibleStage,interpolationAlpha,world_->GameTime());
+        renderer_.Render(player_,currentHit_,visibleStage);
     }
 
     SetMouseCaptured(false);
@@ -125,8 +118,6 @@ void App::SetMouseCaptured(bool captured){
     breakingBlock_.reset();
     breakingTicks_=0;
     destroyStage_=-1;
-    armSwingTicks_=0;
-    armSwinging_=false;
     if(!window_)return;
     if(captured){
         RECT rectangle{};GetClientRect(window_,&rectangle);
@@ -152,11 +143,7 @@ InputState App::PollInput() const{
 
 void App::FixedTick(){
     const InputState input=PollInput();
-    armSwinging_=input.breakBlock;
-    if(armSwinging_)armSwingTicks_=(armSwingTicks_+1)%6;
-    else armSwingTicks_=0;
     player_.Tick(input,*world_);
-    world_->Tick();
     world_->UpdateStreaming(player_.Position());
     const auto hit=world_->Raycast(player_.EyePosition(),player_.LookDirection(),kReach);
     UpdateBreaking(input,hit);
@@ -174,6 +161,7 @@ void App::UpdateBreaking(const InputState& input,const std::optional<RayHit>& hi
         breakingBlock_.reset();breakingTicks_=0;destroyStage_=-1;
         return;
     }
+    // 0-10%, 10-20%, ... 90-100% map directly to destroy_stage_0 through 9.
     destroyStage_=std::clamp((breakingTicks_*10)/definition.breakTicks,0,9);
 }
 }

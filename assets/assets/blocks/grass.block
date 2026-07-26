@@ -1,8 +1,0 @@
-hardness=0.6
-break_ticks=18
-top=grass_top
-bottom=dirt
-side=grass_side
-tint_top=grass
-tint_side=grass
-solid=true

@@ -29,7 +29,5 @@ private:
     std::optional<RayHit> currentHit_;
     std::optional<Int3> breakingBlock_;
     int breakingTicks_{},destroyStage_{-1};
-    int armSwingTicks_{};
-    bool armSwinging_{};
 };
 }
