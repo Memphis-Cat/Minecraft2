@@ -50,6 +50,11 @@ jobs:
               assert not missing, f'Missing mixin classes: {missing}'
           print('Validated runtime:', runtime)
           PY
+          runtime=$(find legacy-culling-1.8.9/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*source*' ! -name '*developer*' | head -n 1)
+          if javap -classpath "$runtime" -c com.memphiscat.legacyculling.mixin.TextRendererMixin | grep -q 'glNewList'; then
+            echo 'Unsafe rendered-text display-list cache is still present'
+            exit 1
+          fi
 
       - name: Download Minecraft assets with retry
         shell: bash
@@ -152,7 +157,7 @@ jobs:
           mkdir -p release
           runtime=$(find legacy-culling-1.8.9/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*source*' ! -name '*developer*' | head -n 1)
           test -n "$runtime"
-          cp "$runtime" release/INSTALL-THIS-Legacy-Culling-1.8.9-0.1.0.jar
+          cp "$runtime" release/INSTALL-THIS-Legacy-Culling-1.8.9-0.2.0.jar
           zip -qr release/Legacy-Culling-1.8.9-Source-Project.zip legacy-culling-1.8.9 \
             -x 'legacy-culling-1.8.9/build/*' \
                'legacy-culling-1.8.9/run/*' \
