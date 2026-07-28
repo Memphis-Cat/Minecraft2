@@ -6,6 +6,7 @@
   "client": [
     "AbstractSignRendererMixin",
     "BlockEntityRenderDispatcherMixin",
+    "GameRendererDepthPyramidMixin",
     "LeavesBlockMixin",
     "LevelExtractorMixin",
     "ParticleEngineMixin",
