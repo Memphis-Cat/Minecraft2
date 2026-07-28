@@ -48,7 +48,7 @@ java {
 }
 
 jar {
-    from('../sodium-culling-addon/LICENSE') {
+    from('LICENSE') {
         rename { "LICENSE_${project.archives_base_name}" }
     }
 }
