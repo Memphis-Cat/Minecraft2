@@ -2,7 +2,6 @@ package com.memphiscat.legacyculling.mixin;
 
 import com.memphiscat.legacyculling.LegacyCullingMod;
 import com.memphiscat.legacyculling.visibility.CullingStats;
-import com.memphiscat.legacyculling.visibility.LegacyHzbFastPath;
 import com.memphiscat.legacyculling.visibility.LegacyVisibilityEngine;
 import com.mojang.blaze3d.platform.GlStateManager;
 import net.minecraft.client.render.CameraView;
@@ -33,8 +32,7 @@ public abstract class EntityRenderDispatcherMixin {
             cir.setReturnValue(false);
             return;
         }
-        if (LegacyHzbFastPath.shouldCullEntity(entity, cameraX, cameraY, cameraZ)
-                || LegacyVisibilityEngine.shouldCullEntity(entity, cameraX, cameraY, cameraZ)) {
+        if (LegacyVisibilityEngine.shouldCullEntity(entity, cameraX, cameraY, cameraZ)) {
             cir.setReturnValue(false);
         }
     }
