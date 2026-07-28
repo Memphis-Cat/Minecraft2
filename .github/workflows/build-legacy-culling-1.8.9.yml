@@ -67,13 +67,67 @@ jobs:
           done
           test "$success" -eq 1
 
-      - name: Client startup smoke test
+      - name: Install Xorg dummy display
         shell: bash
         run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+            xserver-xorg-core xserver-xorg-video-dummy mesa-utils x11-xserver-utils
+          cat > /tmp/xorg-dummy.conf <<'EOF'
+          Section "ServerFlags"
+              Option "AutoAddDevices" "false"
+              Option "AllowMouseOpenFail" "true"
+          EndSection
+          Section "Device"
+              Identifier "DummyDevice"
+              Driver "dummy"
+              VideoRam 256000
+          EndSection
+          Section "Monitor"
+              Identifier "DummyMonitor"
+              HorizSync 5.0-1000.0
+              VertRefresh 5.0-200.0
+              Modeline "1280x720" 74.50 1280 1344 1472 1664 720 723 728 748 -HSync +Vsync
+          EndSection
+          Section "Screen"
+              Identifier "DummyScreen"
+              Device "DummyDevice"
+              Monitor "DummyMonitor"
+              DefaultDepth 24
+              SubSection "Display"
+                  Depth 24
+                  Modes "1280x720"
+              EndSubSection
+          EndSection
+          Section "ServerLayout"
+              Identifier "DummyLayout"
+              Screen "DummyScreen"
+          EndSection
+          EOF
+          sudo Xorg :99 -config /tmp/xorg-dummy.conf -noreset -ac \
+            +extension GLX +extension RANDR +extension RENDER \
+            -logfile /tmp/Xorg.99.log >/tmp/xorg-stdout.log 2>&1 &
+          for attempt in $(seq 1 20); do
+            if DISPLAY=:99 xdpyinfo >/tmp/xdpyinfo.txt 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          DISPLAY=:99 xdpyinfo >/tmp/xdpyinfo.txt
+          DISPLAY=:99 xrandr --query >/tmp/xrandr.txt
+          DISPLAY=:99 glxinfo -B >/tmp/glxinfo.txt
+          cat /tmp/xrandr.txt
+          cat /tmp/glxinfo.txt
+
+      - name: Client startup smoke test
+        shell: bash
+        env:
+          DISPLAY: ':99'
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
           set +e
-          timeout 90s xvfb-run -a \
-            -s '-screen 0 1280x720x24 -ac +extension GLX +extension RANDR +render -noreset' \
-            gradle -p legacy-culling-1.8.9 runClient --stacktrace --no-daemon \
+          timeout 90s gradle -p legacy-culling-1.8.9 runClient --stacktrace --no-daemon \
             > legacy-client-smoke.log 2>&1
           exit_code=$?
           set -e
@@ -122,5 +176,10 @@ jobs:
             legacy-build.log
             legacy-client-smoke.log
             legacy-smoke-latest.log
+            /tmp/Xorg.99.log
+            /tmp/xorg-stdout.log
+            /tmp/xdpyinfo.txt
+            /tmp/xrandr.txt
+            /tmp/glxinfo.txt
           if-no-files-found: warn
           retention-days: 7
