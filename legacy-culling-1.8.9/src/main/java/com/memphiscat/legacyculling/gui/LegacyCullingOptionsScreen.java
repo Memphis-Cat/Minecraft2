@@ -22,9 +22,12 @@ public final class LegacyCullingOptionsScreen extends Screen {
             "blockEntityCulling", "particleCulling", "particleDensity", "maxParticleLimit", "maxParticles",
             "particleMaxDistance", "particleCellLimit", "staticParticleColor", "fogCulling", "weatherCulling",
             "leafFaceCulling", "signTextCulling", "decorationBackfaceCulling", "entityHierarchicalZ",
-            "hierarchicalZCaptureInterval", "hierarchicalZMaxWidth", "shaderShadowSafety", "limitChunkUpdates",
-            "chunkUpdateLimit", "lowAnimationTick", "animationTickRate", "optimizedFontRenderer", "cacheFontData",
-            "optimizedWorldSwapping", "downscalePackImages", "batchModelRendering"
+            "hierarchicalZCaptureInterval", "hierarchicalZMaxWidth", "shaderShadowSafety",
+            "limitChunkUpdates", "adaptiveChunkLoading", "chunkUpdateLimit", "chunkBurstLimit", "chunkTargetFps",
+            "farTerrainLod", "farTerrainDistance", "farTerrainSampleStep", "farTerrainCacheChunks",
+            "farTerrainBuildsPerFrame", "farTerrainRenderBudget", "farTerrainMinFps", "farTerrainShaderSafety",
+            "lowAnimationTick", "animationTickRate", "optimizedFontRenderer", "cacheFontData",
+            "optimizedWorldSwapping", "downscalePackImages"
     };
 
     private final Screen parent;
@@ -146,11 +149,17 @@ public final class LegacyCullingOptionsScreen extends Screen {
         }
 
         private static int step(String name) {
+            if (name.equals("farTerrainDistance")) return 4;
+            if (name.equals("farTerrainSampleStep")) return 2;
+            if (name.equals("farTerrainCacheChunks")) return 256;
+            if (name.equals("farTerrainRenderBudget")) return 64;
+            if (name.equals("farTerrainMinFps") || name.equals("chunkTargetFps")) return 10;
+            if (name.equals("chunkBurstLimit")) return 4;
             if (name.contains("Distance") || name.contains("Width")) return 16;
             if (name.equals("maxParticles")) return 500;
             if (name.equals("particleCellLimit")) return 8;
             if (name.equals("animationTickRate")) return 100;
-            if (name.equals("chunkUpdateLimit")) return 10;
+            if (name.equals("chunkUpdateLimit")) return 20;
             if (name.equals("entityCullingIntervalMs")) return 5;
             return 1;
         }
@@ -160,7 +169,14 @@ public final class LegacyCullingOptionsScreen extends Screen {
             if (name.equals("maxParticles")) return 500;
             if (name.equals("particleCellLimit")) return 8;
             if (name.equals("animationTickRate")) return 100;
-            if (name.equals("chunkUpdateLimit")) return 10;
+            if (name.equals("chunkUpdateLimit")) return 20;
+            if (name.equals("chunkBurstLimit")) return 4;
+            if (name.equals("chunkTargetFps") || name.equals("farTerrainMinFps")) return 30;
+            if (name.equals("farTerrainDistance")) return 8;
+            if (name.equals("farTerrainSampleStep")) return 2;
+            if (name.equals("farTerrainCacheChunks")) return 128;
+            if (name.equals("farTerrainBuildsPerFrame")) return 1;
+            if (name.equals("farTerrainRenderBudget")) return 32;
             if (name.equals("hierarchicalZCaptureInterval")) return 2;
             if (name.contains("Distance")) return 16;
             if (name.contains("Width")) return 128;
@@ -172,7 +188,14 @@ public final class LegacyCullingOptionsScreen extends Screen {
             if (name.equals("maxParticles")) return 20000;
             if (name.equals("particleCellLimit")) return 256;
             if (name.equals("animationTickRate")) return 1000;
-            if (name.equals("chunkUpdateLimit")) return 500;
+            if (name.equals("chunkUpdateLimit")) return 1000;
+            if (name.equals("chunkBurstLimit")) return 128;
+            if (name.equals("chunkTargetFps") || name.equals("farTerrainMinFps")) return 240;
+            if (name.equals("farTerrainDistance")) return 64;
+            if (name.equals("farTerrainSampleStep")) return 8;
+            if (name.equals("farTerrainCacheChunks")) return 4096;
+            if (name.equals("farTerrainBuildsPerFrame")) return 8;
+            if (name.equals("farTerrainRenderBudget")) return 2048;
             if (name.equals("hierarchicalZCaptureInterval")) return 30;
             if (name.contains("Distance")) return 512;
             if (name.contains("Width")) return 1024;
