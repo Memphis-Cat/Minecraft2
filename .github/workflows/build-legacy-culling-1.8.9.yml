@@ -78,8 +78,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf legacy-culling-1.8.9/build legacy-culling-1.8.9/run legacy-culling-1.8.9/.gradle
-          zip -qr Legacy-Culling-1.8.9-Source-Project.zip legacy-culling-1.8.9
+          zip -qr Legacy-Culling-1.8.9-Source-Project.zip legacy-culling-1.8.9 \
+            -x 'legacy-culling-1.8.9/build/*' \
+               'legacy-culling-1.8.9/run/*' \
+               'legacy-culling-1.8.9/.gradle/*' \
+               'legacy-culling-1.8.9/.build-tools/*'
 
       - name: Upload mod jars and source
         if: success()
