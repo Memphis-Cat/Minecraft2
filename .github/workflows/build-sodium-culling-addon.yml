@@ -1,0 +1,164 @@
+name: Build Sodium Culling Addon
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.1'
+      - name: Build mod
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle -p sodium-culling-addon clean build --stacktrace 2>&1 | tee build.log
+      - name: Validate packaged jars
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtime_jar=$(find sodium-culling-addon/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*sources*' ! -name '*developer*' | head -n 1)
+          source_jar=$(find sodium-culling-addon/build/libs -maxdepth 1 -type f -name '*developer-sources-NOT-A-MOD.jar' | head -n 1)
+          test -n "$runtime_jar"
+          test -n "$source_jar"
+          jar tf "$runtime_jar" | grep -qx 'fabric.mod.json'
+          jar tf "$runtime_jar" | grep -qx 'sodiumculling.mixins.json'
+          for class_file in \
+            com/memphiscat/sodiumculling/mixin/AbstractSignRendererMixin.class \
+            com/memphiscat/sodiumculling/mixin/BlockEntityRenderDispatcherMixin.class \
+            com/memphiscat/sodiumculling/mixin/DebugScreenOverlayMixin.class \
+            com/memphiscat/sodiumculling/mixin/GameRendererDepthPyramidMixin.class \
+            com/memphiscat/sodiumculling/mixin/LeavesBlockMixin.class \
+            com/memphiscat/sodiumculling/mixin/LevelExtractorMixin.class \
+            com/memphiscat/sodiumculling/mixin/ParticleEngineMixin.class \
+            com/memphiscat/sodiumculling/mixin/QuadParticleGroupMixin.class \
+            com/memphiscat/sodiumculling/mixin/WeatherEffectRendererMixin.class
+          do
+            jar tf "$runtime_jar" | grep -qx "$class_file"
+          done
+          if jar tf "$source_jar" | grep -Eq '(^|/)fabric\.mod\.json$|(^|/)sodiumculling\.mixins\.json$'; then
+            echo 'Developer sources archive incorrectly contains Fabric mod metadata.' >&2
+            exit 1
+          fi
+          echo "Validated runtime jar: $runtime_jar"
+          echo "Validated non-mod source archive: $source_jar"
+      - name: Download Sodium for smoke test
+        shell: bash
+        run: |
+          mkdir -p sodium-culling-addon/run/mods
+          python - <<'PY'
+          import json
+          import pathlib
+          import urllib.parse
+          import urllib.request
+
+          query = urllib.parse.urlencode({
+              "game_versions": '["26.2"]',
+              "loaders": '["fabric"]'
+          })
+          request = urllib.request.Request(
+              "https://api.modrinth.com/v2/project/sodium/version?" + query,
+              headers={"User-Agent": "Memphis-Cat-Sodium-Culling-CI/1.0"}
+          )
+          versions = json.load(urllib.request.urlopen(request))
+          version = next(v for v in versions if "0.9.1" in v["version_number"])
+          file = next((f for f in version["files"] if f.get("primary")), version["files"][0])
+          target = pathlib.Path("sodium-culling-addon/run/mods") / file["filename"]
+          urllib.request.urlretrieve(file["url"], target)
+          print(target)
+          PY
+      - name: Sodium client startup smoke test
+        shell: bash
+        run: |
+          set +e
+          timeout 90s xvfb-run -a gradle -p sodium-culling-addon runClient --stacktrace --no-daemon > client-smoke.log 2>&1
+          exit_code=$?
+          set -e
+          cat client-smoke.log
+          latest="sodium-culling-addon/run/logs/latest.log"
+          test -f "$latest"
+          grep -q "Sodium Culling Addon initialized" "$latest"
+          if grep -E "Mixin apply failed|InjectionError|InvalidMixinException|Mod resolution encountered|Failed to start the minecraft server" "$latest"; then
+            exit 1
+          fi
+          cp "$latest" sodium-smoke-latest.log
+          if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 124 ]; then
+            exit "$exit_code"
+          fi
+      - name: Download Iris for compatibility smoke test
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import pathlib
+          import urllib.parse
+          import urllib.request
+
+          query = urllib.parse.urlencode({
+              "game_versions": '["26.2"]',
+              "loaders": '["fabric"]'
+          })
+          request = urllib.request.Request(
+              "https://api.modrinth.com/v2/project/iris/version?" + query,
+              headers={"User-Agent": "Memphis-Cat-Sodium-Culling-CI/1.0"}
+          )
+          versions = json.load(urllib.request.urlopen(request))
+          version = next(v for v in versions if "1.11.2" in v["version_number"])
+          file = next((f for f in version["files"] if f.get("primary")), version["files"][0])
+          target = pathlib.Path("sodium-culling-addon/run/mods") / file["filename"]
+          urllib.request.urlretrieve(file["url"], target)
+          print(target)
+          PY
+      - name: Iris client startup smoke test
+        shell: bash
+        run: |
+          rm -f sodium-culling-addon/run/logs/latest.log
+          set +e
+          timeout 90s xvfb-run -a gradle -p sodium-culling-addon runClient --stacktrace --no-daemon > iris-client-smoke.log 2>&1
+          exit_code=$?
+          set -e
+          cat iris-client-smoke.log
+          latest="sodium-culling-addon/run/logs/latest.log"
+          test -f "$latest"
+          grep -q "Sodium Culling Addon initialized" "$latest"
+          grep -qi "iris" "$latest"
+          if grep -E "Mixin apply failed|InjectionError|InvalidMixinException|Mod resolution encountered|Failed to start the minecraft server" "$latest"; then
+            exit 1
+          fi
+          cp "$latest" iris-smoke-latest.log
+          if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 124 ]; then
+            exit "$exit_code"
+          fi
+      - name: Upload build and smoke logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sodium-culling-build-log
+          path: |
+            build.log
+            client-smoke.log
+            iris-client-smoke.log
+            sodium-smoke-latest.log
+            iris-smoke-latest.log
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload jars
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sodium-culling-addon-26.2
+          path: sodium-culling-addon/build/libs/*.jar
+          if-no-files-found: error
+          retention-days: 7

@@ -1,0 +1,20 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.memphiscat.sodiumculling.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "AbstractSignRendererMixin",
+    "BlockEntityRenderDispatcherMixin",
+    "DebugScreenOverlayMixin",
+    "GameRendererDepthPyramidMixin",
+    "LeavesBlockMixin",
+    "LevelExtractorMixin",
+    "ParticleEngineMixin",
+    "QuadParticleGroupMixin",
+    "WeatherEffectRendererMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
