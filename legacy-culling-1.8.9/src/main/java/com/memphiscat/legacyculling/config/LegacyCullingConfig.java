@@ -6,6 +6,8 @@ import net.fabricmc.loader.api.FabricLoader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
@@ -13,22 +15,75 @@ import java.util.Properties;
 public final class LegacyCullingConfig {
     private static final Path PATH = FabricLoader.getInstance().getConfigDir().resolve("legacy-culling.properties");
 
+    // Core visibility systems.
     public boolean enabled = true;
     public boolean showStatistics = true;
-    public boolean entityOcclusion = true;
-    public boolean blockEntityOcclusion = true;
+    public boolean entityCulling = true;
+    public int entityCullingIntervalMs = 10;
+    public boolean smartEntityCulling = true;
+    public boolean entityHierarchicalZ = true;
+    public boolean blockEntityCulling = true;
     public boolean particleCulling = true;
     public boolean particleDensity = true;
     public boolean fogCulling = true;
+    public boolean weatherCulling = true;
     public boolean leafFaceCulling = true;
     public boolean signTextCulling = true;
     public boolean decorationBackfaceCulling = true;
-    public boolean hierarchicalZCulling = true;
     public boolean shaderShadowSafety = true;
 
+    // Entity safety rules.
+    public boolean dontCullEnderDragons = true;
+    public boolean dontCullWithers = true;
+    public boolean dontCullPlayerNametags = true;
+    public boolean dontCullEntityNametags = true;
+    public boolean dontCullArmorstandNametags = true;
+    public boolean checkArmorstandRules = true;
+
+    // Optional GL/model controls.
+    public boolean entityBackfaceCulling = false;
+    public boolean playerBackfaceCulling = false;
+    public boolean disableArmorstands = false;
+    public boolean disableSemitransparentPlayers = false;
+    public boolean disableEnchantmentBooks = false;
+    public boolean disableItemFrames = false;
+    public boolean disableMappedItemFrames = false;
+    public boolean disableGroundedArrows = false;
+    public boolean disableAttachedArrows = false;
+    public boolean disableSkulls = false;
+    public boolean disableFallingBlocks = false;
+    public boolean disableNametagBoxes = false;
+    public boolean unstackedItems = false;
+    public boolean disableEndPortals = false;
+    public boolean disableEnchantmentGlint = false;
+
+    // Custom render distances.
+    public boolean customEntityRenderDistance = false;
+    public int tileEntityRenderDistance = 128;
+    public int hostileEntityRenderDistance = 128;
+    public int passiveEntityRenderDistance = 96;
+    public int playerEntityRenderDistance = 192;
+    public int globalEntityRenderDistance = 192;
+
+    // Particle and animation controls.
+    public boolean staticParticleColor = true;
+    public boolean maxParticleLimit = true;
+    public int maxParticles = 4000;
     public int particleMaxDistance = 96;
     public int particleCellLimit = 48;
-    public int rayCacheTicks = 3;
+    public boolean lowAnimationTick = true;
+    public int animationTickRate = 500;
+
+    // Chunk and renderer work controls.
+    public boolean limitChunkUpdates = true;
+    public int chunkUpdateLimit = 60;
+    public boolean batchModelRendering = true;
+    public boolean optimizedFontRenderer = true;
+    public boolean cacheFontData = true;
+    public boolean optimizedWorldSwapping = true;
+    public boolean downscalePackImages = true;
+
+    // HZB details.
     public int hierarchicalZCaptureInterval = 6;
     public int hierarchicalZMaxWidth = 320;
 
@@ -43,49 +98,55 @@ public final class LegacyCullingConfig {
                 LegacyCullingMod.LOGGER.warn("Could not read {}", PATH, exception);
             }
         }
+        config.clamp();
         config.save();
         return config;
     }
 
     private void read(Properties properties) {
-        enabled = bool(properties, "enabled", enabled);
-        showStatistics = bool(properties, "showStatistics", showStatistics);
-        entityOcclusion = bool(properties, "entityOcclusion", entityOcclusion);
-        blockEntityOcclusion = bool(properties, "blockEntityOcclusion", blockEntityOcclusion);
-        particleCulling = bool(properties, "particleCulling", particleCulling);
-        particleDensity = bool(properties, "particleDensity", particleDensity);
-        fogCulling = bool(properties, "fogCulling", fogCulling);
-        leafFaceCulling = bool(properties, "leafFaceCulling", leafFaceCulling);
-        signTextCulling = bool(properties, "signTextCulling", signTextCulling);
-        decorationBackfaceCulling = bool(properties, "decorationBackfaceCulling", decorationBackfaceCulling);
-        hierarchicalZCulling = bool(properties, "hierarchicalZCulling", hierarchicalZCulling);
-        shaderShadowSafety = bool(properties, "shaderShadowSafety", shaderShadowSafety);
-        particleMaxDistance = integer(properties, "particleMaxDistance", particleMaxDistance, 16, 256);
-        particleCellLimit = integer(properties, "particleCellLimit", particleCellLimit, 8, 512);
-        rayCacheTicks = integer(properties, "rayCacheTicks", rayCacheTicks, 1, 10);
-        hierarchicalZCaptureInterval = integer(properties, "hierarchicalZCaptureInterval", hierarchicalZCaptureInterval, 2, 30);
-        hierarchicalZMaxWidth = integer(properties, "hierarchicalZMaxWidth", hierarchicalZMaxWidth, 128, 1024);
+        for (Field field : getClass().getFields()) {
+            if (Modifier.isStatic(field.getModifiers())) continue;
+            String raw = properties.getProperty(field.getName());
+            if (raw == null) continue;
+            try {
+                if (field.getType() == boolean.class) {
+                    field.setBoolean(this, Boolean.parseBoolean(raw.trim()));
+                } else if (field.getType() == int.class) {
+                    field.setInt(this, Integer.parseInt(raw.trim()));
+                }
+            } catch (IllegalAccessException | NumberFormatException exception) {
+                LegacyCullingMod.LOGGER.warn("Ignoring invalid setting {}={}", field.getName(), raw);
+            }
+        }
+    }
+
+    private void clamp() {
+        entityCullingIntervalMs = clamp(entityCullingIntervalMs, 0, 1000);
+        tileEntityRenderDistance = clamp(tileEntityRenderDistance, 16, 512);
+        hostileEntityRenderDistance = clamp(hostileEntityRenderDistance, 16, 512);
+        passiveEntityRenderDistance = clamp(passiveEntityRenderDistance, 16, 512);
+        playerEntityRenderDistance = clamp(playerEntityRenderDistance, 16, 512);
+        globalEntityRenderDistance = clamp(globalEntityRenderDistance, 16, 512);
+        maxParticles = clamp(maxParticles, 64, 100000);
+        particleMaxDistance = clamp(particleMaxDistance, 16, 256);
+        particleCellLimit = clamp(particleCellLimit, 8, 512);
+        animationTickRate = clamp(animationTickRate, 20, 1000);
+        chunkUpdateLimit = clamp(chunkUpdateLimit, 1, 1000);
+        hierarchicalZCaptureInterval = clamp(hierarchicalZCaptureInterval, 2, 30);
+        hierarchicalZMaxWidth = clamp(hierarchicalZMaxWidth, 128, 1024);
     }
 
     public synchronized void save() {
+        clamp();
         Properties properties = new Properties();
-        properties.setProperty("enabled", Boolean.toString(enabled));
-        properties.setProperty("showStatistics", Boolean.toString(showStatistics));
-        properties.setProperty("entityOcclusion", Boolean.toString(entityOcclusion));
-        properties.setProperty("blockEntityOcclusion", Boolean.toString(blockEntityOcclusion));
-        properties.setProperty("particleCulling", Boolean.toString(particleCulling));
-        properties.setProperty("particleDensity", Boolean.toString(particleDensity));
-        properties.setProperty("fogCulling", Boolean.toString(fogCulling));
-        properties.setProperty("leafFaceCulling", Boolean.toString(leafFaceCulling));
-        properties.setProperty("signTextCulling", Boolean.toString(signTextCulling));
-        properties.setProperty("decorationBackfaceCulling", Boolean.toString(decorationBackfaceCulling));
-        properties.setProperty("hierarchicalZCulling", Boolean.toString(hierarchicalZCulling));
-        properties.setProperty("shaderShadowSafety", Boolean.toString(shaderShadowSafety));
-        properties.setProperty("particleMaxDistance", Integer.toString(particleMaxDistance));
-        properties.setProperty("particleCellLimit", Integer.toString(particleCellLimit));
-        properties.setProperty("rayCacheTicks", Integer.toString(rayCacheTicks));
-        properties.setProperty("hierarchicalZCaptureInterval", Integer.toString(hierarchicalZCaptureInterval));
-        properties.setProperty("hierarchicalZMaxWidth", Integer.toString(hierarchicalZMaxWidth));
+        for (Field field : getClass().getFields()) {
+            if (Modifier.isStatic(field.getModifiers())) continue;
+            try {
+                properties.setProperty(field.getName(), String.valueOf(field.get(this)));
+            } catch (IllegalAccessException exception) {
+                LegacyCullingMod.LOGGER.warn("Could not save setting {}", field.getName());
+            }
+        }
         try {
             Files.createDirectories(PATH.getParent());
             try (OutputStream output = Files.newOutputStream(PATH)) {
@@ -96,17 +157,7 @@ public final class LegacyCullingConfig {
         }
     }
 
-    private static boolean bool(Properties properties, String key, boolean fallback) {
-        String value = properties.getProperty(key);
-        return value == null ? fallback : Boolean.parseBoolean(value.trim());
-    }
-
-    private static int integer(Properties properties, String key, int fallback, int min, int max) {
-        try {
-            int value = Integer.parseInt(properties.getProperty(key, Integer.toString(fallback)).trim());
-            return Math.max(min, Math.min(max, value));
-        } catch (NumberFormatException ignored) {
-            return fallback;
-        }
+    private static int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
     }
 }
