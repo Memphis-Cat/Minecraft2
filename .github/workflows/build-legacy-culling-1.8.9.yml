@@ -1,0 +1,88 @@
+name: Build Legacy Culling 1.8.9
+
+on:
+  push:
+    branches: [legacy-culling-1.8.9]
+  pull_request:
+    branches: [sodium-culling-addon-26.2]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.1'
+      - name: Build baseline
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle -p legacy-culling-1.8.9 clean build --stacktrace 2>&1 | tee legacy-build.log
+      - name: Inspect resolved 1.8.9 named API
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          find "$HOME/.gradle" -type f -name '*.jar' | grep -E '1\.8\.9|minecraft' > all-minecraft-jars.txt || true
+          named=$(while read -r f; do
+            if jar tf "$f" 2>/dev/null | grep -q 'net/minecraft/client/render/WorldRenderer.class'; then
+              echo "$f"
+              break
+            fi
+          done < all-minecraft-jars.txt)
+          if [ -z "${named:-}" ]; then
+            echo 'Could not locate named Minecraft jar' > legacy-api-report.txt
+            exit 0
+          fi
+          echo "Named jar: $named" > legacy-api-report.txt
+          jar tf "$named" | grep -E 'net/minecraft/client/(render|particle|gui)/.*(WorldRenderer|GameRenderer|EntityRenderDispatcher|BlockEntityRenderDispatcher|ParticleManager|VideoOptions|Debug|BuiltChunk|ChunkBuilder|VisGraph|Occlusion).*class' | sort >> legacy-api-report.txt || true
+          for cls in \
+            net.minecraft.client.render.WorldRenderer \
+            net.minecraft.client.render.GameRenderer \
+            net.minecraft.client.render.entity.EntityRenderDispatcher \
+            net.minecraft.client.render.block.entity.BlockEntityRenderDispatcher \
+            net.minecraft.client.particle.ParticleManager \
+            net.minecraft.client.gui.screen.option.VideoOptionsScreen
+          do
+            echo >> legacy-api-report.txt
+            echo "===== $cls =====" >> legacy-api-report.txt
+            javap -classpath "$named" -private "$cls" >> legacy-api-report.txt 2>&1 || true
+          done
+          cat legacy-api-report.txt
+      - name: Validate packaged runtime jar
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtime=$(find legacy-culling-1.8.9/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*sources*' ! -name '*developer*' | head -n 1)
+          test -n "$runtime"
+          jar tf "$runtime" | grep -qx 'fabric.mod.json'
+          jar tf "$runtime" | grep -qx 'com/memphiscat/legacyculling/LegacyCullingMod.class'
+          echo "Validated $runtime"
+      - name: Upload baseline jar
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-culling-1.8.9
+          path: legacy-culling-1.8.9/build/libs/*.jar
+          retention-days: 7
+      - name: Upload logs and API report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-culling-1.8.9-build-info
+          path: |
+            legacy-build.log
+            legacy-api-report.txt
+            all-minecraft-jars.txt
+          if-no-files-found: warn
+          retention-days: 7
