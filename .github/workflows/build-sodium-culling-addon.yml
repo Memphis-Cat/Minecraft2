@@ -25,6 +25,35 @@ jobs:
         run: |
           set -o pipefail
           gradle -p sodium-culling-addon clean build --stacktrace 2>&1 | tee build.log
+      - name: Validate packaged jars
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtime_jar=$(find sodium-culling-addon/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*sources*' ! -name '*developer*' | head -n 1)
+          source_jar=$(find sodium-culling-addon/build/libs -maxdepth 1 -type f -name '*developer-sources-NOT-A-MOD.jar' | head -n 1)
+          test -n "$runtime_jar"
+          test -n "$source_jar"
+          jar tf "$runtime_jar" | grep -qx 'fabric.mod.json'
+          jar tf "$runtime_jar" | grep -qx 'sodiumculling.mixins.json'
+          for class_file in \
+            com/memphiscat/sodiumculling/mixin/AbstractSignRendererMixin.class \
+            com/memphiscat/sodiumculling/mixin/BlockEntityRenderDispatcherMixin.class \
+            com/memphiscat/sodiumculling/mixin/DebugScreenOverlayMixin.class \
+            com/memphiscat/sodiumculling/mixin/GameRendererDepthPyramidMixin.class \
+            com/memphiscat/sodiumculling/mixin/LeavesBlockMixin.class \
+            com/memphiscat/sodiumculling/mixin/LevelExtractorMixin.class \
+            com/memphiscat/sodiumculling/mixin/ParticleEngineMixin.class \
+            com/memphiscat/sodiumculling/mixin/QuadParticleGroupMixin.class \
+            com/memphiscat/sodiumculling/mixin/WeatherEffectRendererMixin.class
+          do
+            jar tf "$runtime_jar" | grep -qx "$class_file"
+          done
+          if jar tf "$source_jar" | grep -Eq '(^|/)fabric\.mod\.json$|(^|/)sodiumculling\.mixins\.json$'; then
+            echo 'Developer sources archive incorrectly contains Fabric mod metadata.' >&2
+            exit 1
+          fi
+          echo "Validated runtime jar: $runtime_jar"
+          echo "Validated non-mod source archive: $source_jar"
       - name: Download Sodium for smoke test
         shell: bash
         run: |
