@@ -4,6 +4,7 @@
   "package": "com.memphiscat.legacyculling.mixin",
   "compatibilityLevel": "JAVA_8",
   "client": [
+    "AbstractArrowEntityAccessor",
     "BaseLeavesBlockMixin",
     "BlockEntityRenderDispatcherMixin",
     "DebugHudMixin",
