@@ -17,6 +17,7 @@
     "ItemRendererMixin",
     "MinecraftClientWorldSwapMixin",
     "ParticleManagerMixin",
+    "PerformanceOverlayMixin",
     "ResourcePackEntryMixin",
     "SignBlockEntityRendererMixin",
     "SpriteAtlasTextureMixin",
