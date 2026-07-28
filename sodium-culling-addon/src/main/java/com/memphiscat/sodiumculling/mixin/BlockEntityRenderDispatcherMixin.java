@@ -22,7 +22,7 @@ public abstract class BlockEntityRenderDispatcherMixin {
         if (globallyRendered) {
             return;
         }
-        BlockEntityRenderer<?> renderer = getRenderer(blockEntity);
+        BlockEntityRenderer renderer = getRenderer(blockEntity);
         if (renderer == null || renderer.shouldRenderOffScreen()) {
             return;
         }
@@ -32,5 +32,5 @@ public abstract class BlockEntityRenderDispatcherMixin {
     }
 
     @Shadow
-    public abstract <E extends BlockEntity> BlockEntityRenderer<E> getRenderer(E blockEntity);
+    public abstract <E extends BlockEntity> BlockEntityRenderer getRenderer(E blockEntity);
 }
