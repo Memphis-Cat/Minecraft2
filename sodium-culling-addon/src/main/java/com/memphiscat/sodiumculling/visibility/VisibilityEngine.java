@@ -8,7 +8,7 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.decoration.Painting;
+import net.minecraft.world.entity.decoration.painting.Painting;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.entity.BeaconBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -87,8 +87,6 @@ public final class VisibilityEngine {
             return true;
         }
 
-        // Shader shadow passes can use a different camera. Distance/frustum remain safe,
-        // but main-camera block-ray occlusion can incorrectly remove a visible shadow.
         if (isShaderPackActive()) {
             return false;
         }
@@ -141,7 +139,6 @@ public final class VisibilityEngine {
             return true;
         }
 
-        // A beacon beam can remain visible even when the beacon block itself is behind a wall.
         if (blockEntity instanceof BeaconBlockEntity || isShaderPackActive()) {
             return false;
         }
@@ -217,7 +214,6 @@ public final class VisibilityEngine {
             return true;
         }
         double dot = normal.dot(toCamera.scale(1.0D / length));
-        // Render both sides around edge-on angles to avoid popping.
         return front ? dot > -0.12D : dot < 0.12D;
     }
 
@@ -265,7 +261,6 @@ public final class VisibilityEngine {
         double nx = painting.getDirection().getStepX();
         double nz = painting.getDirection().getStepZ();
         double dot = nx * toCamera.x + nz * toCamera.z;
-        // Only reject a clearly rear-facing painting; edge-on paintings remain visible.
         return dot < -0.15D && toCamera.horizontalDistanceSqr() > 4.0D;
     }
 
