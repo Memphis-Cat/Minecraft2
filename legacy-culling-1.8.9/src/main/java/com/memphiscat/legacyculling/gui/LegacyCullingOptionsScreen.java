@@ -11,7 +11,8 @@ import java.util.List;
 public final class LegacyCullingOptionsScreen extends Screen {
     private static final int PAGE_SIZE = 12;
     private static final String[] FIELD_ORDER = {
-            "enabled", "showStatistics", "entityCulling", "entityCullingIntervalMs", "smartEntityCulling",
+            "enabled", "minimalPerformanceOverlay", "showStatistics", "entityCulling",
+            "entityCullingIntervalMs", "occlusionHideFrames", "smartEntityCulling",
             "dontCullEnderDragons", "dontCullWithers", "dontCullPlayerNametags", "dontCullEntityNametags",
             "dontCullArmorstandNametags", "checkArmorstandRules", "entityBackfaceCulling", "playerBackfaceCulling",
             "disableArmorstands", "disableSemitransparentPlayers", "disableItemFrames", "disableMappedItemFrames",
@@ -166,6 +167,7 @@ public final class LegacyCullingOptionsScreen extends Screen {
 
         private static int minimum(String name) {
             if (name.equals("entityCullingIntervalMs")) return 0;
+            if (name.equals("occlusionHideFrames")) return 2;
             if (name.equals("maxParticles")) return 500;
             if (name.equals("particleCellLimit")) return 8;
             if (name.equals("animationTickRate")) return 100;
@@ -185,6 +187,7 @@ public final class LegacyCullingOptionsScreen extends Screen {
 
         private static int maximum(String name) {
             if (name.equals("entityCullingIntervalMs")) return 250;
+            if (name.equals("occlusionHideFrames")) return 12;
             if (name.equals("maxParticles")) return 20000;
             if (name.equals("particleCellLimit")) return 256;
             if (name.equals("animationTickRate")) return 1000;
