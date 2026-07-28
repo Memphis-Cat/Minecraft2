@@ -18,16 +18,13 @@ import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 
-/**
- * Uses HZB only as a fast confirmation after the object's center ray is blocked.
- * Any uncertainty falls through to the full CPU visibility test.
- */
+/** HZB is a fast confirmation only. Uncertain objects fall through to full CPU sampling. */
 public final class LegacyHzbFastPath {
     private LegacyHzbFastPath() {
     }
 
     public static boolean shouldCullEntity(Entity entity, double cameraX, double cameraY, double cameraZ) {
-        if (!enabled() || entity == null || safetyExempt(entity)) return false;
+        if (!baseEnabled() || entity == null || safetyExempt(entity)) return false;
         MinecraftClient client = MinecraftClient.getInstance();
         Entity cameraEntity = client.getCameraEntity();
         if (entity == cameraEntity || entity == client.player) return false;
@@ -37,6 +34,8 @@ public final class LegacyHzbFastPath {
             CullingStats.entity();
             return true;
         }
+        if (!LegacyCullingMod.CONFIG.entityHierarchicalZ) return false;
+
         Vec3d camera = new Vec3d(cameraX, cameraY, cameraZ);
         if (distanceSquared(camera, box) < 16.0D || !LegacyDepthPyramid.isOccluded(box)) return false;
         if (centerRayClear(entity.world, camera, center(box))) return false;
@@ -45,7 +44,7 @@ public final class LegacyHzbFastPath {
     }
 
     public static boolean shouldCullBlockEntity(BlockEntity blockEntity) {
-        if (!enabled() || blockEntity == null || !blockEntity.hasWorld() || blockEntity instanceof BeaconBlockEntity) {
+        if (!baseEnabled() || blockEntity == null || !blockEntity.hasWorld() || blockEntity instanceof BeaconBlockEntity) {
             return false;
         }
         BlockEntityRenderer renderer = BlockEntityRenderDispatcher.INSTANCE.getRenderer(blockEntity);
@@ -60,6 +59,8 @@ public final class LegacyHzbFastPath {
             CullingStats.blockEntity();
             return true;
         }
+        if (!LegacyCullingMod.CONFIG.entityHierarchicalZ) return false;
+
         Vec3d camera = new Vec3d(cameraX, cameraY, cameraZ);
         if (distanceSquared(camera, box) < 9.0D || !LegacyDepthPyramid.isOccluded(box)) return false;
         if (centerRayClear(blockEntity.getEntityWorld(), camera, center(box))) return false;
@@ -68,7 +69,7 @@ public final class LegacyHzbFastPath {
     }
 
     public static boolean shouldCullParticle(double x, double y, double z) {
-        if (!enabled()) return false;
+        if (!baseEnabled()) return false;
         MinecraftClient client = MinecraftClient.getInstance();
         Entity cameraEntity = client.getCameraEntity();
         if (cameraEntity == null || client.world == null) return false;
@@ -78,6 +79,7 @@ public final class LegacyHzbFastPath {
             CullingStats.particle();
             return true;
         }
+        if (!LegacyCullingMod.CONFIG.entityHierarchicalZ) return false;
         if (!LegacyDepthPyramid.isOccluded(box) || centerRayClear(client.world, camera, new Vec3d(x, y, z))) {
             return false;
         }
@@ -85,8 +87,8 @@ public final class LegacyHzbFastPath {
         return true;
     }
 
-    private static boolean enabled() {
-        return LegacyCullingMod.CONFIG.enabled && LegacyCullingMod.CONFIG.entityHierarchicalZ
+    private static boolean baseEnabled() {
+        return LegacyCullingMod.CONFIG.enabled
                 && !(LegacyCullingMod.CONFIG.smartEntityCulling && OptiFineCompat.shadersActive());
     }
 
