@@ -69,8 +69,25 @@ public final class LegacyCullingConfig {
     public boolean lowAnimationTick = true;
     public int animationTickRate = 500;
 
+    // Smooth, FPS-aware chunk rebuild scheduling.
     public boolean limitChunkUpdates = true;
-    public int chunkUpdateLimit = 60;
+    public boolean adaptiveChunkLoading = true;
+    public int chunkUpdateLimit = 120;
+    public int chunkBurstLimit = 16;
+    public int chunkTargetFps = 60;
+
+    // Cached, previously received terrain rendered as a low-detail height/color mesh.
+    public boolean farTerrainLod = true;
+    public int farTerrainDistance = 32;
+    public int farTerrainSampleStep = 4;
+    public int farTerrainCacheChunks = 1024;
+    public int farTerrainBuildsPerFrame = 2;
+    public int farTerrainRenderBudget = 384;
+    public int farTerrainMinFps = 50;
+    public boolean farTerrainShaderSafety = true;
+
+    // optimizedFontRenderer is retained for config compatibility, but now only
+    // enables safe text measurement caches. Complete draw-call caching was removed.
     public boolean optimizedFontRenderer = true;
     public boolean cacheFontData = true;
     public boolean optimizedWorldSwapping = true;
@@ -124,6 +141,14 @@ public final class LegacyCullingConfig {
         particleCellLimit = clamp(particleCellLimit, 8, 512);
         animationTickRate = clamp(animationTickRate, 20, 1000);
         chunkUpdateLimit = clamp(chunkUpdateLimit, 1, 1000);
+        chunkBurstLimit = clamp(chunkBurstLimit, 1, 128);
+        chunkTargetFps = clamp(chunkTargetFps, 30, 240);
+        farTerrainDistance = clamp(farTerrainDistance, 8, 64);
+        farTerrainSampleStep = clamp(farTerrainSampleStep, 2, 8);
+        farTerrainCacheChunks = clamp(farTerrainCacheChunks, 128, 4096);
+        farTerrainBuildsPerFrame = clamp(farTerrainBuildsPerFrame, 1, 8);
+        farTerrainRenderBudget = clamp(farTerrainRenderBudget, 32, 2048);
+        farTerrainMinFps = clamp(farTerrainMinFps, 20, 240);
         hierarchicalZCaptureInterval = clamp(hierarchicalZCaptureInterval, 2, 30);
         hierarchicalZMaxWidth = clamp(hierarchicalZMaxWidth, 128, 1024);
     }
