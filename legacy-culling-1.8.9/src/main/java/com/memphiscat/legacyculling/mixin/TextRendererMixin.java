@@ -1,6 +1,9 @@
 package com.memphiscat.legacyculling.mixin;
 
 import com.memphiscat.legacyculling.LegacyCullingMod;
+import com.memphiscat.legacyculling.font.BoundedLruMap;
+import com.memphiscat.legacyculling.font.FontDisplayListEntry;
+import com.memphiscat.legacyculling.font.FontRenderKey;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.resource.ResourceManager;
 import org.lwjgl.opengl.GL11;
@@ -20,16 +23,17 @@ import java.util.Map;
 @Mixin(TextRenderer.class)
 public abstract class TextRendererMixin {
     @Unique
-    private final Map<String, Integer> legacyculling$widthCache = legacyculling$lru(4096);
+    private final Map<String, Integer> legacyculling$widthCache = new BoundedLruMap<String, Integer>(4096);
     @Unique
-    private final Map<String, String> legacyculling$trimCache = legacyculling$lru(1024);
+    private final Map<String, String> legacyculling$trimCache = new BoundedLruMap<String, String>(1024);
     @Unique
-    private final Map<String, List<String>> legacyculling$wrapCache = legacyculling$lru(512);
+    private final Map<String, List<String>> legacyculling$wrapCache =
+            new BoundedLruMap<String, List<String>>(512);
     @Unique
-    private final LinkedHashMap<RenderKey, DisplayListEntry> legacyculling$renderCache =
-            new LinkedHashMap<RenderKey, DisplayListEntry>(256, 0.75F, true);
+    private final LinkedHashMap<FontRenderKey, FontDisplayListEntry> legacyculling$renderCache =
+            new LinkedHashMap<FontRenderKey, FontDisplayListEntry>(256, 0.75F, true);
     @Unique
-    private RenderKey legacyculling$compilingKey;
+    private FontRenderKey legacyculling$compilingKey;
     @Unique
     private int legacyculling$compilingList;
 
@@ -46,8 +50,8 @@ public abstract class TextRendererMixin {
                                                     CallbackInfoReturnable<Integer> cir) {
         if (!legacyculling$optimizedRenderer() || text == null || text.length() > 512
                 || legacyculling$compilingList != 0) return;
-        RenderKey key = new RenderKey(text, Float.floatToIntBits(x), Float.floatToIntBits(y), color, shadow);
-        DisplayListEntry cached = legacyculling$renderCache.get(key);
+        FontRenderKey key = new FontRenderKey(text, Float.floatToIntBits(x), Float.floatToIntBits(y), color, shadow);
+        FontDisplayListEntry cached = legacyculling$renderCache.get(key);
         if (cached != null) {
             GL11.glCallList(cached.listId);
             cir.setReturnValue(cached.returnValue);
@@ -66,7 +70,7 @@ public abstract class TextRendererMixin {
         if (legacyculling$compilingList == 0 || legacyculling$compilingKey == null) return;
         GL11.glEndList();
         legacyculling$renderCache.put(legacyculling$compilingKey,
-                new DisplayListEntry(legacyculling$compilingList, cir.getReturnValue()));
+                new FontDisplayListEntry(legacyculling$compilingList, cir.getReturnValue()));
         legacyculling$compilingKey = null;
         legacyculling$compilingList = 0;
         legacyculling$trimRenderCache();
@@ -121,8 +125,9 @@ public abstract class TextRendererMixin {
     @Unique
     private void legacyculling$trimRenderCache() {
         while (legacyculling$renderCache.size() > 512) {
-            Iterator<Map.Entry<RenderKey, DisplayListEntry>> iterator = legacyculling$renderCache.entrySet().iterator();
-            Map.Entry<RenderKey, DisplayListEntry> entry = iterator.next();
+            Iterator<Map.Entry<FontRenderKey, FontDisplayListEntry>> iterator =
+                    legacyculling$renderCache.entrySet().iterator();
+            Map.Entry<FontRenderKey, FontDisplayListEntry> entry = iterator.next();
             GL11.glDeleteLists(entry.getValue().listId, 1);
             iterator.remove();
         }
@@ -130,7 +135,7 @@ public abstract class TextRendererMixin {
 
     @Unique
     private void legacyculling$deleteRenderCache() {
-        for (DisplayListEntry entry : legacyculling$renderCache.values()) {
+        for (FontDisplayListEntry entry : legacyculling$renderCache.values()) {
             GL11.glDeleteLists(entry.listId, 1);
         }
         legacyculling$renderCache.clear();
@@ -150,62 +155,5 @@ public abstract class TextRendererMixin {
     @Unique
     private static boolean legacyculling$fontDataCache() {
         return LegacyCullingMod.CONFIG.enabled && LegacyCullingMod.CONFIG.cacheFontData;
-    }
-
-    @Unique
-    private static <K, V> Map<K, V> legacyculling$lru(final int maximum) {
-        return new LinkedHashMap<K, V>(maximum, 0.75F, true) {
-            @Override
-            protected boolean removeEldestEntry(Map.Entry<K, V> eldest) {
-                return size() > maximum;
-            }
-        };
-    }
-
-    @Unique
-    private static final class DisplayListEntry {
-        final int listId;
-        final int returnValue;
-
-        DisplayListEntry(int listId, int returnValue) {
-            this.listId = listId;
-            this.returnValue = returnValue;
-        }
-    }
-
-    @Unique
-    private static final class RenderKey {
-        final String text;
-        final int xBits;
-        final int yBits;
-        final int color;
-        final boolean shadow;
-
-        RenderKey(String text, int xBits, int yBits, int color, boolean shadow) {
-            this.text = text;
-            this.xBits = xBits;
-            this.yBits = yBits;
-            this.color = color;
-            this.shadow = shadow;
-        }
-
-        @Override
-        public boolean equals(Object object) {
-            if (this == object) return true;
-            if (!(object instanceof RenderKey)) return false;
-            RenderKey other = (RenderKey) object;
-            return xBits == other.xBits && yBits == other.yBits && color == other.color
-                    && shadow == other.shadow && text.equals(other.text);
-        }
-
-        @Override
-        public int hashCode() {
-            int result = text.hashCode();
-            result = 31 * result + xBits;
-            result = 31 * result + yBits;
-            result = 31 * result + color;
-            result = 31 * result + (shadow ? 1 : 0);
-            return result;
-        }
     }
 }
