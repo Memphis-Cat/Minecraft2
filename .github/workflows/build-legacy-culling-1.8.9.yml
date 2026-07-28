@@ -55,7 +55,10 @@ jobs:
         shell: bash
         run: |
           set +e
-          timeout 90s xvfb-run -a gradle -p legacy-culling-1.8.9 runClient --stacktrace --no-daemon > legacy-client-smoke.log 2>&1
+          timeout 90s xvfb-run -a \
+            -s '-screen 0 1280x720x24 -ac +extension GLX +extension RANDR +render -noreset' \
+            gradle -p legacy-culling-1.8.9 runClient --stacktrace --no-daemon \
+            > legacy-client-smoke.log 2>&1
           exit_code=$?
           set -e
           cat legacy-client-smoke.log
@@ -70,12 +73,22 @@ jobs:
             exit "$exit_code"
           fi
 
-      - name: Upload mod jars
+      - name: Package source project
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf legacy-culling-1.8.9/build legacy-culling-1.8.9/run legacy-culling-1.8.9/.gradle
+          zip -qr Legacy-Culling-1.8.9-Source-Project.zip legacy-culling-1.8.9
+
+      - name: Upload mod jars and source
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: legacy-culling-1.8.9
-          path: legacy-culling-1.8.9/build/libs/*.jar
+          path: |
+            legacy-culling-1.8.9/build/libs/*.jar
+            Legacy-Culling-1.8.9-Source-Project.zip
           retention-days: 7
 
       - name: Upload build and smoke logs
