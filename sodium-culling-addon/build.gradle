@@ -42,6 +42,15 @@ java {
     targetCompatibility = JavaVersion.VERSION_25
 }
 
+// A developer source archive must never be detected as an installable Fabric mod.
+// Excluding the metadata prevents the exact ClassNotFound crash caused by placing
+// a sources jar in the mods folder.
+tasks.named('sourcesJar', Jar) {
+    archiveClassifier = 'developer-sources-NOT-A-MOD'
+    exclude 'fabric.mod.json'
+    exclude 'sodiumculling.mixins.json'
+}
+
 jar {
     from("LICENSE") {
         rename { "LICENSE_${project.archives_base_name}" }
