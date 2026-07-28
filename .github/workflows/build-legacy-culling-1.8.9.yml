@@ -22,120 +22,76 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.5.1'
-      - name: Build baseline
+
+      - name: Build mod
         shell: bash
         run: |
           set -o pipefail
           gradle -p legacy-culling-1.8.9 clean build --stacktrace 2>&1 | tee legacy-build.log
-      - name: Inspect resolved 1.8.9 named API
-        if: success()
+
+      - name: Validate packaged jars
         shell: bash
         run: |
           set -euo pipefail
-          find "$HOME/.gradle" -type f -name '*.jar' | grep -E '1\.8\.9|minecraft' > all-minecraft-jars.txt || true
-          named=$(while read -r f; do
-            if jar tf "$f" 2>/dev/null | grep -q 'net/minecraft/client/render/WorldRenderer.class'; then
-              echo "$f"
-              break
-            fi
-          done < all-minecraft-jars.txt)
-          if [ -z "${named:-}" ]; then
-            echo 'Could not locate named Minecraft jar' > legacy-api-report.txt
-            exit 0
+          python - <<'PY'
+          import json
+          import pathlib
+          import zipfile
+
+          libs = pathlib.Path('legacy-culling-1.8.9/build/libs')
+          runtime = next(p for p in libs.glob('*.jar') if 'source' not in p.name.lower() and 'developer' not in p.name.lower())
+          sources = next(p for p in libs.glob('*developer-sources-NOT-A-MOD.jar'))
+          with zipfile.ZipFile(runtime) as z:
+              names = set(z.namelist())
+              assert 'fabric.mod.json' in names
+              assert 'legacyculling.mixins.json' in names
+              mixins = json.loads(z.read('legacyculling.mixins.json'))
+              package = mixins['package'].replace('.', '/')
+              missing = [m for m in mixins['client'] if f'{package}/{m}.class' not in names]
+              assert not missing, f'Missing mixin classes: {missing}'
+          with zipfile.ZipFile(sources) as z:
+              names = set(z.namelist())
+              assert 'fabric.mod.json' not in names
+              assert 'legacyculling.mixins.json' not in names
+          print('Validated runtime:', runtime)
+          print('Validated non-mod sources:', sources)
+          PY
+
+      - name: Client startup smoke test
+        shell: bash
+        run: |
+          set +e
+          timeout 90s xvfb-run -a gradle -p legacy-culling-1.8.9 runClient --stacktrace --no-daemon > legacy-client-smoke.log 2>&1
+          exit_code=$?
+          set -e
+          cat legacy-client-smoke.log
+          latest='legacy-culling-1.8.9/run/logs/latest.log'
+          test -f "$latest"
+          grep -q 'Legacy Culling initialized for Minecraft 1.8.9' "$latest"
+          if grep -E 'Mixin apply failed|InjectionError|InvalidMixinException|MixinApplyError|Mod resolution encountered|Could not execute entrypoint' "$latest"; then
+            exit 1
           fi
-          cp "$named" named-minecraft-1.8.9.jar
-          echo "Named jar: $named" > legacy-api-report.txt
-          jar tf "$named" | grep -E 'net/minecraft/client/(render|particle|gui|world)/.*(WorldRenderer|GameRenderer|EntityRenderDispatcher|BlockEntityRenderDispatcher|ParticleManager|VideoOptions|Debug|BuiltChunk|ChunkBuilder|Occlusion|Sign|Button|Screen).*class' | sort >> legacy-api-report.txt || true
-          for cls in \
-            net.minecraft.client.MinecraftClient \
-            net.minecraft.client.render.WorldRenderer \
-            net.minecraft.client.render.WorldRenderer\$ChunkInfo \
-            net.minecraft.client.render.GameRenderer \
-            net.minecraft.client.render.entity.EntityRenderDispatcher \
-            net.minecraft.client.render.entity.EntityRenderer \
-            net.minecraft.client.render.block.entity.BlockEntityRenderDispatcher \
-            net.minecraft.client.render.block.entity.BlockEntityRenderer \
-            net.minecraft.client.render.block.entity.SignBlockEntityRenderer \
-            net.minecraft.client.particle.ParticleManager \
-            net.minecraft.client.particle.Particle \
-            net.minecraft.client.render.CameraView \
-            net.minecraft.client.render.BaseFrustum \
-            net.minecraft.client.render.Frustum \
-            net.minecraft.client.world.BuiltChunk \
-            net.minecraft.client.render.BuiltChunkStorage \
-            net.minecraft.client.render.chunk.ChunkBuilder \
-            net.minecraft.client.render.chunk.ChunkOcclusionData \
-            net.minecraft.client.render.chunk.ChunkOcclusionDataBuilder \
-            net.minecraft.client.gui.hud.DebugHud \
-            net.minecraft.client.gui.screen.VideoOptionsScreen \
-            net.minecraft.client.gui.screen.Screen \
-            net.minecraft.client.gui.widget.ButtonWidget \
-            net.minecraft.entity.Entity \
-            net.minecraft.entity.decoration.AbstractDecorationEntity \
-            net.minecraft.entity.decoration.PaintingEntity \
-            net.minecraft.entity.decoration.ItemFrameEntity \
-            net.minecraft.entity.decoration.ArmorStandEntity \
-            net.minecraft.entity.boss.dragon.EnderDragonEntity \
-            net.minecraft.entity.boss.WitherEntity \
-            net.minecraft.entity.player.PlayerEntity \
-            net.minecraft.entity.mob.HostileEntity \
-            net.minecraft.entity.passive.PassiveEntity \
-            net.minecraft.entity.projectile.ArrowEntity \
-            net.minecraft.entity.FallingBlockEntity \
-            net.minecraft.entity.ItemEntity \
-            net.minecraft.block.entity.BlockEntity \
-            net.minecraft.block.entity.SignBlockEntity \
-            net.minecraft.block.entity.BeaconBlockEntity \
-            net.minecraft.block.entity.EnchantingTableBlockEntity \
-            net.minecraft.block.entity.EndPortalBlockEntity \
-            net.minecraft.block.entity.SkullBlockEntity \
-            net.minecraft.block.LeavesBlock \
-            net.minecraft.client.font.TextRenderer \
-            net.minecraft.client.render.entity.ItemEntityRenderer \
-            net.minecraft.client.render.entity.feature.StuckArrowsFeatureRenderer \
-            net.minecraft.client.resource.ResourcePackLoader \
-            net.minecraft.util.math.Box \
-            net.minecraft.util.math.Vec3d \
-            net.minecraft.util.math.BlockPos \
-            net.minecraft.world.World
-          do
-            echo >> legacy-api-report.txt
-            echo "===== $cls =====" >> legacy-api-report.txt
-            javap -classpath "$named" -private "$cls" >> legacy-api-report.txt 2>&1 || true
-          done
-          cat legacy-api-report.txt
-      - name: Validate packaged runtime jar
-        if: success()
-        shell: bash
-        run: |
-          set -euo pipefail
-          runtime=$(find legacy-culling-1.8.9/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*sources*' ! -name '*developer*' | head -n 1)
-          test -n "$runtime"
-          jar tf "$runtime" | grep -qx 'fabric.mod.json'
-          jar tf "$runtime" | grep -qx 'com/memphiscat/legacyculling/LegacyCullingMod.class'
-          echo "Validated $runtime"
-      - name: Upload baseline jar
+          cp "$latest" legacy-smoke-latest.log
+          if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 124 ]; then
+            exit "$exit_code"
+          fi
+
+      - name: Upload mod jars
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: legacy-culling-1.8.9
           path: legacy-culling-1.8.9/build/libs/*.jar
           retention-days: 7
-      - name: Upload named Minecraft API jar
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: named-minecraft-1.8.9-api
-          path: named-minecraft-1.8.9.jar
-          retention-days: 1
-      - name: Upload logs and API report
+
+      - name: Upload build and smoke logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: legacy-culling-1.8.9-build-info
           path: |
             legacy-build.log
-            legacy-api-report.txt
-            all-minecraft-jars.txt
+            legacy-client-smoke.log
+            legacy-smoke-latest.log
           if-no-files-found: warn
           retention-days: 7
