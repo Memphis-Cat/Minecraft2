@@ -12,6 +12,7 @@ import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL21;
 import org.lwjgl.opengl.GL32;
 import org.lwjgl.opengl.GLContext;
+import org.lwjgl.opengl.GLSync;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -100,42 +101,42 @@ public final class LegacyDepthPyramid {
         if (movementSq > 0.0625D || angleDifference(camera.yaw, capturedYaw) > 2.0F
                 || Math.abs(camera.pitch - capturedPitch) > 2.0F) return false;
 
-        float minX = Float.POSITIVE_INFINITY;
-        float minY = Float.POSITIVE_INFINITY;
-        float maxX = Float.NEGATIVE_INFINITY;
-        float maxY = Float.NEGATIVE_INFINITY;
+        float minScreenX = Float.POSITIVE_INFINITY;
+        float minScreenY = Float.POSITIVE_INFINITY;
+        float maxScreenX = Float.NEGATIVE_INFINITY;
+        float maxScreenY = Float.NEGATIVE_INFINITY;
         float nearestDepth = 1.0F;
 
         for (int mask = 0; mask < 8; mask++) {
-            double x = (mask & 1) == 0 ? box.minX : box.maxX;
-            double y = (mask & 2) == 0 ? box.minY : box.maxY;
-            double z = (mask & 4) == 0 ? box.minZ : box.maxZ;
-            float[] clip = transform(capturedMvp, (float) x, (float) y, (float) z, 1.0F);
+            float worldX = (float) ((mask & 1) == 0 ? box.minX : box.maxX);
+            float worldY = (float) ((mask & 2) == 0 ? box.minY : box.maxY);
+            float worldZ = (float) ((mask & 4) == 0 ? box.minZ : box.maxZ);
+            float[] clip = transform(capturedMvp, worldX, worldY, worldZ, 1.0F);
             if (!Float.isFinite(clip[3]) || clip[3] <= 0.02F) return false;
             float ndcX = clip[0] / clip[3];
             float ndcY = clip[1] / clip[3];
-            float ndcZ = clip[2] / clip[3];
-            float depth = ndcZ * 0.5F + 0.5F;
+            float depth = clip[2] / clip[3] * 0.5F + 0.5F;
             if (!Float.isFinite(depth) || depth < 0.0F || depth > 1.0F) return false;
             nearestDepth = Math.min(nearestDepth, depth);
             float screenX = (ndcX * 0.5F + 0.5F) * sourceWidth;
             float screenY = (ndcY * 0.5F + 0.5F) * sourceHeight;
-            minX = Math.min(minX, screenX);
-            minY = Math.min(minY, screenY);
-            maxX = Math.max(maxX, screenX);
-            maxY = Math.max(maxY, screenY);
+            minScreenX = Math.min(minScreenX, screenX);
+            minScreenY = Math.min(minScreenY, screenY);
+            maxScreenX = Math.max(maxScreenX, screenX);
+            maxScreenY = Math.max(maxScreenY, screenY);
         }
 
-        if (maxX < 0.0F || maxY < 0.0F || minX >= sourceWidth || minY >= sourceHeight) return false;
-        minX = Math.max(0.0F, minX);
-        minY = Math.max(0.0F, minY);
-        maxX = Math.min(sourceWidth - 1.0F, maxX);
-        maxY = Math.min(sourceHeight - 1.0F, maxY);
+        if (maxScreenX < 0.0F || maxScreenY < 0.0F
+                || minScreenX >= sourceWidth || minScreenY >= sourceHeight) return false;
+        minScreenX = Math.max(0.0F, minScreenX);
+        minScreenY = Math.max(0.0F, minScreenY);
+        maxScreenX = Math.min(sourceWidth - 1.0F, maxScreenX);
+        maxScreenY = Math.min(sourceHeight - 1.0F, maxScreenY);
 
-        float baseMinX = minX / baseScale;
-        float baseMinY = minY / baseScale;
-        float baseMaxX = maxX / baseScale;
-        float baseMaxY = maxY / baseScale;
+        float baseMinX = minScreenX / baseScale;
+        float baseMinY = minScreenY / baseScale;
+        float baseMaxX = maxScreenX / baseScale;
+        float baseMaxY = maxScreenY / baseScale;
         float span = Math.max(baseMaxX - baseMinX, baseMaxY - baseMinY);
         int level = 0;
         while (level + 1 < LEVELS.size() && span > 4.0F) {
@@ -150,8 +151,8 @@ public final class LegacyDepthPyramid {
         int y0 = clamp((int) Math.floor(baseMinY / divisor), 0, height - 1);
         int x1 = clamp((int) Math.floor(baseMaxX / divisor), 0, width - 1);
         int y1 = clamp((int) Math.floor(baseMaxY / divisor), 0, height - 1);
-        float epsilon = 0.0035F;
         float[] data = LEVELS.get(level);
+        float epsilon = 0.0035F;
         for (int y = y0; y <= y1; y++) {
             int row = y * width;
             for (int x = x0; x <= x1; x++) {
@@ -171,7 +172,7 @@ public final class LegacyDepthPyramid {
         cleanup();
         allocatedWidth = width;
         allocatedHeight = height;
-        allocatedBytes = (long) width * height * 4L;
+        allocatedBytes = (long) width * height * Float.BYTES;
         for (Slot slot : SLOTS) {
             slot.pbo = GL15.glGenBuffers();
             GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, slot.pbo);
@@ -182,7 +183,7 @@ public final class LegacyDepthPyramid {
 
     private static void consumeCompleted() {
         for (Slot slot : SLOTS) {
-            if (slot.fence == 0L || slot.snapshot == null) continue;
+            if (slot.fence == null || slot.snapshot == null) continue;
             int status = GL32.glClientWaitSync(slot.fence, 0, 0L);
             if (status != GL32.GL_ALREADY_SIGNALED && status != GL32.GL_CONDITION_SATISFIED) continue;
 
@@ -190,13 +191,12 @@ public final class LegacyDepthPyramid {
             ByteBuffer mapped = GL15.glMapBuffer(GL21.GL_PIXEL_PACK_BUFFER, GL15.GL_READ_ONLY,
                     allocatedBytes, null);
             if (mapped != null) {
-                FloatBuffer depth = mapped.order(ByteOrder.nativeOrder()).asFloatBuffer();
-                build(depth, slot.snapshot);
+                build(mapped.order(ByteOrder.nativeOrder()).asFloatBuffer(), slot.snapshot);
                 GL15.glUnmapBuffer(GL21.GL_PIXEL_PACK_BUFFER);
             }
             GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, 0);
             GL32.glDeleteSync(slot.fence);
-            slot.fence = 0L;
+            slot.fence = null;
             slot.snapshot = null;
         }
     }
@@ -214,13 +214,13 @@ public final class LegacyDepthPyramid {
         float[] base = new float[width * height];
 
         for (int y = 0; y < sourceHeight; y++) {
-            int targetRow = (y / baseScale) * width;
             int sourceRow = y * sourceWidth;
+            int targetRow = (y / baseScale) * width;
             for (int x = 0; x < sourceWidth; x++) {
                 float value = depth.get(sourceRow + x);
-                int index = targetRow + x / baseScale;
-                if (Float.isFinite(value) && value >= 0.0F && value <= 1.0F && value > base[index]) {
-                    base[index] = value;
+                int target = targetRow + x / baseScale;
+                if (Float.isFinite(value) && value >= 0.0F && value <= 1.0F && value > base[target]) {
+                    base[target] = value;
                 }
             }
         }
@@ -268,7 +268,7 @@ public final class LegacyDepthPyramid {
     }
 
     private static Slot freeSlot() {
-        for (Slot slot : SLOTS) if (slot.fence == 0L) return slot;
+        for (Slot slot : SLOTS) if (slot.fence == null) return slot;
         return null;
     }
 
@@ -309,9 +309,9 @@ public final class LegacyDepthPyramid {
 
     private static void cleanup() {
         for (Slot slot : SLOTS) {
-            if (slot.fence != 0L) GL32.glDeleteSync(slot.fence);
+            if (slot.fence != null) GL32.glDeleteSync(slot.fence);
             if (slot.pbo != 0) GL15.glDeleteBuffers(slot.pbo);
-            slot.fence = 0L;
+            slot.fence = null;
             slot.pbo = 0;
             slot.snapshot = null;
         }
@@ -345,7 +345,7 @@ public final class LegacyDepthPyramid {
 
     private static final class Slot {
         int pbo;
-        long fence;
+        GLSync fence;
         Snapshot snapshot;
     }
 
@@ -360,8 +360,8 @@ public final class LegacyDepthPyramid {
         final int width;
         final int height;
 
-        Snapshot(float[] mvp, double cameraX, double cameraY, double cameraZ, float yaw, float pitch,
-                 long frame, int width, int height) {
+        Snapshot(float[] mvp, double cameraX, double cameraY, double cameraZ,
+                 float yaw, float pitch, long frame, int width, int height) {
             this.mvp = mvp;
             this.cameraX = cameraX;
             this.cameraY = cameraY;
