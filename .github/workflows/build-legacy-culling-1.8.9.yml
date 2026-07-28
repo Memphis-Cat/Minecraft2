@@ -43,6 +43,7 @@ jobs:
             echo 'Could not locate named Minecraft jar' > legacy-api-report.txt
             exit 0
           fi
+          cp "$named" named-minecraft-1.8.9.jar
           echo "Named jar: $named" > legacy-api-report.txt
           jar tf "$named" | grep -E 'net/minecraft/client/(render|particle|gui|world)/.*(WorldRenderer|GameRenderer|EntityRenderDispatcher|BlockEntityRenderDispatcher|ParticleManager|VideoOptions|Debug|BuiltChunk|ChunkBuilder|Occlusion|Sign|Button|Screen).*class' | sort >> legacy-api-report.txt || true
           for cls in \
@@ -70,13 +71,29 @@ jobs:
             net.minecraft.client.gui.screen.Screen \
             net.minecraft.client.gui.widget.ButtonWidget \
             net.minecraft.entity.Entity \
-            net.minecraft.entity.decoration.HangingEntity \
+            net.minecraft.entity.decoration.AbstractDecorationEntity \
             net.minecraft.entity.decoration.PaintingEntity \
             net.minecraft.entity.decoration.ItemFrameEntity \
+            net.minecraft.entity.decoration.ArmorStandEntity \
+            net.minecraft.entity.boss.dragon.EnderDragonEntity \
+            net.minecraft.entity.boss.WitherEntity \
+            net.minecraft.entity.player.PlayerEntity \
+            net.minecraft.entity.mob.HostileEntity \
+            net.minecraft.entity.passive.PassiveEntity \
+            net.minecraft.entity.projectile.ArrowEntity \
+            net.minecraft.entity.FallingBlockEntity \
+            net.minecraft.entity.ItemEntity \
             net.minecraft.block.entity.BlockEntity \
             net.minecraft.block.entity.SignBlockEntity \
             net.minecraft.block.entity.BeaconBlockEntity \
+            net.minecraft.block.entity.EnchantingTableBlockEntity \
+            net.minecraft.block.entity.EndPortalBlockEntity \
+            net.minecraft.block.entity.SkullBlockEntity \
             net.minecraft.block.LeavesBlock \
+            net.minecraft.client.font.TextRenderer \
+            net.minecraft.client.render.entity.ItemEntityRenderer \
+            net.minecraft.client.render.entity.feature.StuckArrowsFeatureRenderer \
+            net.minecraft.client.resource.ResourcePackLoader \
             net.minecraft.util.math.Box \
             net.minecraft.util.math.Vec3d \
             net.minecraft.util.math.BlockPos \
@@ -104,6 +121,13 @@ jobs:
           name: legacy-culling-1.8.9
           path: legacy-culling-1.8.9/build/libs/*.jar
           retention-days: 7
+      - name: Upload named Minecraft API jar
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: named-minecraft-1.8.9-api
+          path: named-minecraft-1.8.9.jar
+          retention-days: 1
       - name: Upload logs and API report
         if: always()
         uses: actions/upload-artifact@v4
