@@ -33,20 +33,22 @@ public abstract class TextRendererMixin {
 
     @Inject(method = "getStringWidth", at = @At("HEAD"), cancellable = true)
     private void legacyculling$reuseStringWidth(String text, CallbackInfoReturnable<Integer> cir) {
-        if (!legacyculling$cacheEnabled() || text == null) return;
+        if (!legacyculling$optimizedRenderer() || text == null) return;
         Integer width = legacyculling$widthCache.get(text);
         if (width != null) cir.setReturnValue(width);
     }
 
     @Inject(method = "getStringWidth", at = @At("RETURN"))
     private void legacyculling$cacheStringWidth(String text, CallbackInfoReturnable<Integer> cir) {
-        if (legacyculling$cacheEnabled() && text != null) legacyculling$widthCache.put(text, cir.getReturnValue());
+        if (legacyculling$optimizedRenderer() && text != null) {
+            legacyculling$widthCache.put(text, cir.getReturnValue());
+        }
     }
 
     @Inject(method = "trimToWidth(Ljava/lang/String;IZ)Ljava/lang/String;", at = @At("HEAD"), cancellable = true)
     private void legacyculling$reuseTrimmedText(String text, int width, boolean backwards,
                                                  CallbackInfoReturnable<String> cir) {
-        if (!legacyculling$cacheEnabled() || text == null) return;
+        if (!legacyculling$optimizedRenderer() || text == null) return;
         String value = legacyculling$trimCache.get(width + ":" + backwards + ":" + text);
         if (value != null) cir.setReturnValue(value);
     }
@@ -54,7 +56,7 @@ public abstract class TextRendererMixin {
     @Inject(method = "trimToWidth(Ljava/lang/String;IZ)Ljava/lang/String;", at = @At("RETURN"))
     private void legacyculling$cacheTrimmedText(String text, int width, boolean backwards,
                                                  CallbackInfoReturnable<String> cir) {
-        if (legacyculling$cacheEnabled() && text != null) {
+        if (legacyculling$optimizedRenderer() && text != null) {
             legacyculling$trimCache.put(width + ":" + backwards + ":" + text, cir.getReturnValue());
         }
     }
@@ -62,7 +64,7 @@ public abstract class TextRendererMixin {
     @Inject(method = "wrapLines", at = @At("HEAD"), cancellable = true)
     private void legacyculling$reuseWrappedText(String text, int width,
                                                  CallbackInfoReturnable<List<String>> cir) {
-        if (!legacyculling$cacheEnabled() || text == null) return;
+        if (!legacyculling$fontDataCache() || text == null) return;
         List<String> value = legacyculling$wrapCache.get(width + ":" + text);
         if (value != null) cir.setReturnValue(new ArrayList<String>(value));
     }
@@ -70,15 +72,19 @@ public abstract class TextRendererMixin {
     @Inject(method = "wrapLines", at = @At("RETURN"))
     private void legacyculling$cacheWrappedText(String text, int width,
                                                  CallbackInfoReturnable<List<String>> cir) {
-        if (legacyculling$cacheEnabled() && text != null && cir.getReturnValue() != null) {
+        if (legacyculling$fontDataCache() && text != null && cir.getReturnValue() != null) {
             legacyculling$wrapCache.put(width + ":" + text, new ArrayList<String>(cir.getReturnValue()));
         }
     }
 
     @Unique
-    private static boolean legacyculling$cacheEnabled() {
-        return LegacyCullingMod.CONFIG.enabled
-                && (LegacyCullingMod.CONFIG.optimizedFontRenderer || LegacyCullingMod.CONFIG.cacheFontData);
+    private static boolean legacyculling$optimizedRenderer() {
+        return LegacyCullingMod.CONFIG.enabled && LegacyCullingMod.CONFIG.optimizedFontRenderer;
+    }
+
+    @Unique
+    private static boolean legacyculling$fontDataCache() {
+        return LegacyCullingMod.CONFIG.enabled && LegacyCullingMod.CONFIG.cacheFontData;
     }
 
     @Unique
