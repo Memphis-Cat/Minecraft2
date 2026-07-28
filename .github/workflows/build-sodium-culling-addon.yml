@@ -50,7 +50,7 @@ jobs:
           urllib.request.urlretrieve(file["url"], target)
           print(target)
           PY
-      - name: Client startup smoke test
+      - name: Sodium client startup smoke test
         shell: bash
         run: |
           set +e
@@ -64,6 +64,51 @@ jobs:
           if grep -E "Mixin apply failed|InjectionError|InvalidMixinException|Mod resolution encountered|Failed to start the minecraft server" "$latest"; then
             exit 1
           fi
+          cp "$latest" sodium-smoke-latest.log
+          if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 124 ]; then
+            exit "$exit_code"
+          fi
+      - name: Download Iris for compatibility smoke test
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import pathlib
+          import urllib.parse
+          import urllib.request
+
+          query = urllib.parse.urlencode({
+              "game_versions": '["26.2"]',
+              "loaders": '["fabric"]'
+          })
+          request = urllib.request.Request(
+              "https://api.modrinth.com/v2/project/iris/version?" + query,
+              headers={"User-Agent": "Memphis-Cat-Sodium-Culling-CI/1.0"}
+          )
+          versions = json.load(urllib.request.urlopen(request))
+          version = next(v for v in versions if "1.11.2" in v["version_number"])
+          file = next((f for f in version["files"] if f.get("primary")), version["files"][0])
+          target = pathlib.Path("sodium-culling-addon/run/mods") / file["filename"]
+          urllib.request.urlretrieve(file["url"], target)
+          print(target)
+          PY
+      - name: Iris client startup smoke test
+        shell: bash
+        run: |
+          rm -f sodium-culling-addon/run/logs/latest.log
+          set +e
+          timeout 90s xvfb-run -a gradle -p sodium-culling-addon runClient --stacktrace --no-daemon > iris-client-smoke.log 2>&1
+          exit_code=$?
+          set -e
+          cat iris-client-smoke.log
+          latest="sodium-culling-addon/run/logs/latest.log"
+          test -f "$latest"
+          grep -q "Sodium Culling Addon initialized" "$latest"
+          grep -qi "iris" "$latest"
+          if grep -E "Mixin apply failed|InjectionError|InvalidMixinException|Mod resolution encountered|Failed to start the minecraft server" "$latest"; then
+            exit 1
+          fi
+          cp "$latest" iris-smoke-latest.log
           if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 124 ]; then
             exit "$exit_code"
           fi
@@ -75,7 +120,9 @@ jobs:
           path: |
             build.log
             client-smoke.log
-            sodium-culling-addon/run/logs/latest.log
+            iris-client-smoke.log
+            sodium-smoke-latest.log
+            iris-smoke-latest.log
           if-no-files-found: warn
           retention-days: 7
       - name: Upload jars
