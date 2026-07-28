@@ -14,6 +14,6 @@ public final class SodiumCullingClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         CONFIG = CullingConfig.load();
-        LOGGER.info("Sodium Culling Addon {} initialized; all configured culling systems are active", VERSION);
+        LOGGER.info("Sodium Culling Addon initialized: version {}; all configured culling systems are active", VERSION);
     }
 }
