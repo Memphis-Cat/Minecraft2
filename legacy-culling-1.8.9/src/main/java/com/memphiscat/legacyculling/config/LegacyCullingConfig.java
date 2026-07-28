@@ -15,7 +15,6 @@ import java.util.Properties;
 public final class LegacyCullingConfig {
     private static final Path PATH = FabricLoader.getInstance().getConfigDir().resolve("legacy-culling.properties");
 
-    // Core visibility systems.
     public boolean enabled = true;
     public boolean showStatistics = true;
     public boolean entityCulling = true;
@@ -32,7 +31,6 @@ public final class LegacyCullingConfig {
     public boolean decorationBackfaceCulling = true;
     public boolean shaderShadowSafety = true;
 
-    // Entity safety rules.
     public boolean dontCullEnderDragons = true;
     public boolean dontCullWithers = true;
     public boolean dontCullPlayerNametags = true;
@@ -40,7 +38,6 @@ public final class LegacyCullingConfig {
     public boolean dontCullArmorstandNametags = true;
     public boolean checkArmorstandRules = true;
 
-    // Optional GL/model controls.
     public boolean entityBackfaceCulling = false;
     public boolean playerBackfaceCulling = false;
     public boolean disableArmorstands = false;
@@ -57,7 +54,6 @@ public final class LegacyCullingConfig {
     public boolean disableEndPortals = false;
     public boolean disableEnchantmentGlint = false;
 
-    // Custom render distances.
     public boolean customEntityRenderDistance = false;
     public int tileEntityRenderDistance = 128;
     public int hostileEntityRenderDistance = 128;
@@ -65,7 +61,6 @@ public final class LegacyCullingConfig {
     public int playerEntityRenderDistance = 192;
     public int globalEntityRenderDistance = 192;
 
-    // Particle and animation controls.
     public boolean staticParticleColor = true;
     public boolean maxParticleLimit = true;
     public int maxParticles = 4000;
@@ -74,16 +69,13 @@ public final class LegacyCullingConfig {
     public boolean lowAnimationTick = true;
     public int animationTickRate = 500;
 
-    // Chunk and renderer work controls.
     public boolean limitChunkUpdates = true;
     public int chunkUpdateLimit = 60;
-    public boolean batchModelRendering = true;
     public boolean optimizedFontRenderer = true;
     public boolean cacheFontData = true;
     public boolean optimizedWorldSwapping = true;
     public boolean downscalePackImages = true;
 
-    // HZB details.
     public int hierarchicalZCaptureInterval = 6;
     public int hierarchicalZMaxWidth = 320;
 
