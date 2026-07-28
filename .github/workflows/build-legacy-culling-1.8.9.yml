@@ -51,6 +51,22 @@ jobs:
           print('Validated runtime:', runtime)
           PY
 
+      - name: Download Minecraft assets with retry
+        shell: bash
+        run: |
+          set -euo pipefail
+          success=0
+          for attempt in 1 2 3; do
+            echo "Asset download attempt $attempt"
+            if gradle -p legacy-culling-1.8.9 downloadAssets --stacktrace --no-daemon; then
+              success=1
+              break
+            fi
+            rm -rf "$HOME/.gradle/caches/fabric-loom/assets"
+            sleep $((attempt * 3))
+          done
+          test "$success" -eq 1
+
       - name: Client startup smoke test
         shell: bash
         run: |
