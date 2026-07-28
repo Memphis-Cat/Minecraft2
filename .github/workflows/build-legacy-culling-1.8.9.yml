@@ -44,14 +44,43 @@ jobs:
             exit 0
           fi
           echo "Named jar: $named" > legacy-api-report.txt
-          jar tf "$named" | grep -E 'net/minecraft/client/(render|particle|gui)/.*(WorldRenderer|GameRenderer|EntityRenderDispatcher|BlockEntityRenderDispatcher|ParticleManager|VideoOptions|Debug|BuiltChunk|ChunkBuilder|VisGraph|Occlusion).*class' | sort >> legacy-api-report.txt || true
+          jar tf "$named" | grep -E 'net/minecraft/client/(render|particle|gui|world)/.*(WorldRenderer|GameRenderer|EntityRenderDispatcher|BlockEntityRenderDispatcher|ParticleManager|VideoOptions|Debug|BuiltChunk|ChunkBuilder|Occlusion|Sign|Button|Screen).*class' | sort >> legacy-api-report.txt || true
           for cls in \
+            net.minecraft.client.MinecraftClient \
             net.minecraft.client.render.WorldRenderer \
+            net.minecraft.client.render.WorldRenderer\$ChunkInfo \
             net.minecraft.client.render.GameRenderer \
             net.minecraft.client.render.entity.EntityRenderDispatcher \
+            net.minecraft.client.render.entity.EntityRenderer \
             net.minecraft.client.render.block.entity.BlockEntityRenderDispatcher \
+            net.minecraft.client.render.block.entity.BlockEntityRenderer \
+            net.minecraft.client.render.block.entity.SignBlockEntityRenderer \
             net.minecraft.client.particle.ParticleManager \
-            net.minecraft.client.gui.screen.option.VideoOptionsScreen
+            net.minecraft.client.particle.Particle \
+            net.minecraft.client.render.CameraView \
+            net.minecraft.client.render.BaseFrustum \
+            net.minecraft.client.render.Frustum \
+            net.minecraft.client.world.BuiltChunk \
+            net.minecraft.client.render.BuiltChunkStorage \
+            net.minecraft.client.render.chunk.ChunkBuilder \
+            net.minecraft.client.render.chunk.ChunkOcclusionData \
+            net.minecraft.client.render.chunk.ChunkOcclusionDataBuilder \
+            net.minecraft.client.gui.hud.DebugHud \
+            net.minecraft.client.gui.screen.VideoOptionsScreen \
+            net.minecraft.client.gui.screen.Screen \
+            net.minecraft.client.gui.widget.ButtonWidget \
+            net.minecraft.entity.Entity \
+            net.minecraft.entity.decoration.HangingEntity \
+            net.minecraft.entity.decoration.PaintingEntity \
+            net.minecraft.entity.decoration.ItemFrameEntity \
+            net.minecraft.block.entity.BlockEntity \
+            net.minecraft.block.entity.SignBlockEntity \
+            net.minecraft.block.entity.BeaconBlockEntity \
+            net.minecraft.block.LeavesBlock \
+            net.minecraft.util.math.Box \
+            net.minecraft.util.math.Vec3d \
+            net.minecraft.util.math.BlockPos \
+            net.minecraft.world.World
           do
             echo >> legacy-api-report.txt
             echo "===== $cls =====" >> legacy-api-report.txt
