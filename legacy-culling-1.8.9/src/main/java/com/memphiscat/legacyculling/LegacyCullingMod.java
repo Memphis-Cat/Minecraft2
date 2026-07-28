@@ -12,6 +12,8 @@ public final class LegacyCullingMod implements ModInitializer {
 
     @Override
     public void onInitialize() {
-        LOGGER.info("Legacy Culling initialized for Minecraft 1.8.9");
+        String message = "Legacy Culling initialized for Minecraft 1.8.9";
+        LOGGER.info(message);
+        System.out.println("[LegacyCulling] INIT_OK " + message);
     }
 }
