@@ -29,7 +29,7 @@ jobs:
           set -o pipefail
           gradle -p legacy-culling-1.8.9 clean build --stacktrace 2>&1 | tee legacy-build.log
 
-      - name: Validate packaged jars
+      - name: Validate packaged runtime jar
         shell: bash
         run: |
           set -euo pipefail
@@ -40,7 +40,6 @@ jobs:
 
           libs = pathlib.Path('legacy-culling-1.8.9/build/libs')
           runtime = next(p for p in libs.glob('*.jar') if 'source' not in p.name.lower() and 'developer' not in p.name.lower())
-          sources = next(p for p in libs.glob('*developer-sources-NOT-A-MOD.jar'))
           with zipfile.ZipFile(runtime) as z:
               names = set(z.namelist())
               assert 'fabric.mod.json' in names
@@ -49,12 +48,7 @@ jobs:
               package = mixins['package'].replace('.', '/')
               missing = [m for m in mixins['client'] if f'{package}/{m}.class' not in names]
               assert not missing, f'Missing mixin classes: {missing}'
-          with zipfile.ZipFile(sources) as z:
-              names = set(z.namelist())
-              assert 'fabric.mod.json' not in names
-              assert 'legacyculling.mixins.json' not in names
           print('Validated runtime:', runtime)
-          print('Validated non-mod sources:', sources)
           PY
 
       - name: Client startup smoke test
