@@ -7,8 +7,22 @@ import org.lwjgl.opengl.GL11;
 
 public final class LegacyFrameState {
     private static float fogEnd = Float.POSITIVE_INFINITY;
+    private static long frameIndex;
 
     private LegacyFrameState() {
+    }
+
+    public static void beginFrame() {
+        frameIndex++;
+    }
+
+    public static long frameIndex() {
+        return frameIndex;
+    }
+
+    public static void reset() {
+        fogEnd = Float.POSITIVE_INFINITY;
+        frameIndex = 0L;
     }
 
     public static void updateFogDistance() {
