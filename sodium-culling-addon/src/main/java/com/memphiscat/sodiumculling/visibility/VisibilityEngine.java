@@ -6,9 +6,10 @@ import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.culling.Frustum;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.decoration.painting.Painting;
+import net.minecraft.world.entity.decoration.HangingEntity;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.entity.BeaconBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -20,10 +21,7 @@ import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * Conservative CPU visibility checks for objects Sodium does not own.
- * A result is only "culled" when every enabled test is conclusive.
- */
+/** Conservative visibility checks for render categories Sodium does not own. */
 public final class VisibilityEngine {
     private static final Map<Integer, CachedVisibility> ENTITY_CACHE = new HashMap<>();
     private static final Map<Long, CachedVisibility> BLOCK_ENTITY_CACHE = new HashMap<>();
@@ -32,7 +30,9 @@ public final class VisibilityEngine {
     private static Camera camera;
     private static Frustum frustum;
     private static long cacheTick = Long.MIN_VALUE;
-    private static Boolean shaderPackActive;
+    private static long shaderQueryTick = Long.MIN_VALUE;
+    private static boolean cachedShaderPackActive;
+    private static float vanillaFogEnd = Float.POSITIVE_INFINITY;
 
     private VisibilityEngine() {
     }
@@ -50,6 +50,7 @@ public final class VisibilityEngine {
                 BLOCK_ENTITY_CACHE.entrySet().removeIf(entry -> tick - entry.getValue().tick > 40L);
             }
         }
+        updateFogDistance();
     }
 
     public static Frustum frustum() {
@@ -78,16 +79,16 @@ public final class VisibilityEngine {
         if (distanceSquaredToBox(cameraPos, box) > maxDistance * maxDistance) {
             return true;
         }
-
         if (!frustum.isVisible(box)) {
             return true;
         }
-
-        if (entity instanceof Painting painting && paintingFacesAway(painting, cameraPos)) {
+        if (entity instanceof HangingEntity hanging && hangingFacesAway(hanging, cameraPos)) {
             return true;
         }
 
-        if (isShaderPackActive()) {
+        // Iris may use a different shadow camera/depth space. Keep distance/frustum tests but avoid
+        // main-camera ray/HZB decisions while a shader pack is active.
+        if (shaderPackActive()) {
             return false;
         }
 
@@ -134,15 +135,15 @@ public final class VisibilityEngine {
         if (distanceSquaredToBox(cameraPos, box) > maxDistance * maxDistance) {
             return true;
         }
-
         if (!frustum.isVisible(box)) {
             return true;
         }
 
-        if (blockEntity instanceof BeaconBlockEntity || isShaderPackActive()) {
+        // A beam can be visible even when its source block is not. Shader passes also use their own
+        // camera, so both cases use only the mathematically safe tests above.
+        if (blockEntity instanceof BeaconBlockEntity || shaderPackActive()) {
             return false;
         }
-
         if (cameraPos.distanceToSqr(box.getCenter()) < 9.0D) {
             return false;
         }
@@ -170,22 +171,22 @@ public final class VisibilityEngine {
         double dx = x - cameraPos.x;
         double dy = y - cameraPos.y;
         double dz = z - cameraPos.z;
-        if (dx * dx + dy * dy + dz * dz > maxDistance * maxDistance) {
+        double distanceSquared = dx * dx + dy * dy + dz * dz;
+        if (distanceSquared > maxDistance * maxDistance) {
             return true;
         }
-
         if (!frustum.pointInFrustum(x, y, z)) {
             return true;
         }
 
         ClientLevel level = Minecraft.getInstance().level;
-        if (level == null || isShaderPackActive() || dx * dx + dy * dy + dz * dz < 36.0D) {
+        if (level == null || shaderPackActive() || distanceSquared < 36.0D) {
             return false;
         }
 
-        int cellX = floorDiv((int) Math.floor(x), 4);
-        int cellY = floorDiv((int) Math.floor(y), 4);
-        int cellZ = floorDiv((int) Math.floor(z), 4);
+        int cellX = Math.floorDiv((int) Math.floor(x), 4);
+        int cellY = Math.floorDiv((int) Math.floor(y), 4);
+        int cellZ = Math.floorDiv((int) Math.floor(z), 4);
         long cellKey = packCell(cellX, cellY, cellZ);
         CachedVisibility cached = PARTICLE_CELL_CACHE.get(cellKey);
         if (cached != null) {
@@ -201,7 +202,13 @@ public final class VisibilityEngine {
     }
 
     public static boolean isColumnVisible(AABB column) {
-        return frustum == null || frustum.isVisible(column);
+        if (frustum != null && !frustum.isVisible(column)) {
+            return false;
+        }
+        if (!SodiumCullingClient.CONFIG.fogCulling || !Float.isFinite(vanillaFogEnd) || camera == null) {
+            return true;
+        }
+        return distanceSquaredToBox(camera.position(), column) <= (vanillaFogEnd + 2.0F) * (vanillaFogEnd + 2.0F);
     }
 
     public static boolean isTextSideVisible(Vec3 normal, Vec3 signCenter, boolean front) {
@@ -214,6 +221,7 @@ public final class VisibilityEngine {
             return true;
         }
         double dot = normal.dot(toCamera.scale(1.0D / length));
+        // Deliberate overlap around edge-on angles prevents visible popping.
         return front ? dot > -0.12D : dot < 0.12D;
     }
 
@@ -221,6 +229,13 @@ public final class VisibilityEngine {
         Vec3 center = box.getCenter();
         if (hasClearRay(level, source, cameraPos, center)) {
             return true;
+        }
+
+        // A high-confidence full-rectangle HZB result plus the current-frame center collision ray is
+        // enough to skip the eight corner rays. If HZB is unavailable or uncertain, all corners are
+        // still tested exactly as in the CPU occlusion path.
+        if (SodiumCullingClient.CONFIG.hierarchicalZCulling && DepthPyramid.isOccluded(box)) {
+            return false;
         }
 
         double insetX = Math.min(0.05D, box.getXsize() * 0.1D);
@@ -255,11 +270,11 @@ public final class VisibilityEngine {
         return hitDistance + 0.09D >= targetDistance;
     }
 
-    private static boolean paintingFacesAway(Painting painting, Vec3 cameraPos) {
-        Vec3 center = painting.getBoundingBox().getCenter();
+    private static boolean hangingFacesAway(HangingEntity hanging, Vec3 cameraPos) {
+        Vec3 center = hanging.getBoundingBox().getCenter();
         Vec3 toCamera = cameraPos.subtract(center);
-        double nx = painting.getDirection().getStepX();
-        double nz = painting.getDirection().getStepZ();
+        double nx = hanging.getDirection().getStepX();
+        double nz = hanging.getDirection().getStepZ();
         double dot = nx * toCamera.x + nz * toCamera.z;
         return dot < -0.15D && toCamera.horizontalDistanceSqr() > 4.0D;
     }
@@ -267,7 +282,28 @@ public final class VisibilityEngine {
     private static double effectiveDistance(int configured) {
         Minecraft minecraft = Minecraft.getInstance();
         int chunks = minecraft.options.getEffectiveRenderDistance();
-        return Math.min(configured, Math.max(32.0D, chunks * 16.0D + 16.0D));
+        double result = Math.min(configured, Math.max(32.0D, chunks * 16.0D + 16.0D));
+        if (SodiumCullingClient.CONFIG.fogCulling && Float.isFinite(vanillaFogEnd) && !shaderPackActive()) {
+            result = Math.min(result, Math.max(8.0D, vanillaFogEnd + 2.0D));
+        }
+        return result;
+    }
+
+    private static void updateFogDistance() {
+        vanillaFogEnd = Float.POSITIVE_INFINITY;
+        if (!SodiumCullingClient.CONFIG.fogCulling || Minecraft.getInstance().level == null || shaderPackActive()) {
+            return;
+        }
+        CameraRenderState state = Minecraft.getInstance().gameRenderer.gameRenderState()
+                .levelRenderState.cameraRenderState;
+        float renderEnd = state.fogData.renderDistanceEnd;
+        float environmentalEnd = state.fogData.environmentalEnd;
+        if (Float.isFinite(renderEnd) && renderEnd > 1.0F) {
+            vanillaFogEnd = renderEnd;
+        }
+        if (Float.isFinite(environmentalEnd) && environmentalEnd > 1.0F) {
+            vanillaFogEnd = Math.min(vanillaFogEnd, environmentalEnd);
+        }
     }
 
     private static double distanceSquaredToBox(Vec3 point, AABB box) {
@@ -277,32 +313,26 @@ public final class VisibilityEngine {
         return dx * dx + dy * dy + dz * dz;
     }
 
-    private static boolean isShaderPackActive() {
+    public static boolean shaderPackActive() {
         if (!FabricLoader.getInstance().isModLoaded("iris")) {
             return false;
         }
-        if (shaderPackActive != null) {
-            return shaderPackActive;
+        ClientLevel level = Minecraft.getInstance().level;
+        long tick = level == null ? 0L : level.getGameTime();
+        if (shaderQueryTick == tick) {
+            return cachedShaderPackActive;
         }
+        shaderQueryTick = tick;
         try {
             Class<?> apiClass = Class.forName("net.irisshaders.iris.api.v0.IrisApi");
-            Method getInstance = apiClass.getMethod("getInstance");
-            Object api = getInstance.invoke(null);
+            Object api = apiClass.getMethod("getInstance").invoke(null);
             Method inUse = apiClass.getMethod("isShaderPackInUse");
-            shaderPackActive = (Boolean) inUse.invoke(api);
+            cachedShaderPackActive = (Boolean) inUse.invoke(api);
         } catch (ReflectiveOperationException | LinkageError error) {
-            SodiumCullingClient.LOGGER.debug("Iris API was not available; using safe no-occlusion fallback", error);
-            shaderPackActive = true;
+            SodiumCullingClient.LOGGER.debug("Iris API unavailable; selecting safe shader fallback", error);
+            cachedShaderPackActive = true;
         }
-        return shaderPackActive;
-    }
-
-    private static int floorDiv(int value, int divisor) {
-        int result = value / divisor;
-        if ((value ^ divisor) < 0 && result * divisor != value) {
-            result--;
-        }
-        return result;
+        return cachedShaderPackActive;
     }
 
     private static long packCell(int x, int y, int z) {
