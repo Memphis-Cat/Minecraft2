@@ -1,0 +1,43 @@
+name: Build Sodium Culling Addon
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.1'
+      - name: Build mod
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle -p sodium-culling-addon clean build --stacktrace 2>&1 | tee build.log
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sodium-culling-build-log
+          path: build.log
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload jars
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sodium-culling-addon-26.2
+          path: sodium-culling-addon/build/libs/*.jar
+          if-no-files-found: error
+          retention-days: 7
