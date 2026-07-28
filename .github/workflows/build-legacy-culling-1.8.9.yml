@@ -89,25 +89,28 @@ jobs:
             exit "$exit_code"
           fi
 
-      - name: Package source project
+      - name: Package release and source project
         if: success()
         shell: bash
         run: |
           set -euo pipefail
-          zip -qr Legacy-Culling-1.8.9-Source-Project.zip legacy-culling-1.8.9 \
+          mkdir -p release
+          runtime=$(find legacy-culling-1.8.9/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*source*' ! -name '*developer*' | head -n 1)
+          test -n "$runtime"
+          cp "$runtime" release/INSTALL-THIS-Legacy-Culling-1.8.9-0.1.0.jar
+          zip -qr release/Legacy-Culling-1.8.9-Source-Project.zip legacy-culling-1.8.9 \
             -x 'legacy-culling-1.8.9/build/*' \
                'legacy-culling-1.8.9/run/*' \
                'legacy-culling-1.8.9/.gradle/*' \
                'legacy-culling-1.8.9/.build-tools/*'
 
-      - name: Upload mod jars and source
+      - name: Upload installable jar and source
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: legacy-culling-1.8.9
-          path: |
-            legacy-culling-1.8.9/build/libs/*.jar
-            Legacy-Culling-1.8.9-Source-Project.zip
+          path: release/*
+          if-no-files-found: error
           retention-days: 7
 
       - name: Upload build and smoke logs
