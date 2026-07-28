@@ -10,9 +10,11 @@
   "entrypoints": {
     "main": ["com.memphiscat.legacyculling.LegacyCullingMod"]
   },
+  "mixins": ["legacyculling.mixins.json"],
   "depends": {
     "fabricloader": ">=0.18.3",
     "minecraft": "1.8.9",
-    "java": ">=8"
+    "java": ">=8",
+    "legacy-fabric-api": ">=1.13.2"
   }
 }
