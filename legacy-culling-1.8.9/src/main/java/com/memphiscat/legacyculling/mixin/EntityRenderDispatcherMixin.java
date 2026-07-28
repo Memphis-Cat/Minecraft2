@@ -1,6 +1,7 @@
 package com.memphiscat.legacyculling.mixin;
 
 import com.memphiscat.legacyculling.LegacyCullingMod;
+import com.memphiscat.legacyculling.visibility.CullingStats;
 import com.memphiscat.legacyculling.visibility.LegacyHzbFastPath;
 import com.memphiscat.legacyculling.visibility.LegacyVisibilityEngine;
 import com.mojang.blaze3d.platform.GlStateManager;
@@ -8,6 +9,7 @@ import net.minecraft.client.render.CameraView;
 import net.minecraft.client.render.entity.EntityRenderDispatcher;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.entity.projectile.AbstractArrowEntity;
 import org.lwjgl.opengl.GL11;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -24,6 +26,13 @@ public abstract class EntityRenderDispatcherMixin {
     private void legacyculling$testVisibility(Entity entity, CameraView cameraView,
                                                double cameraX, double cameraY, double cameraZ,
                                                CallbackInfoReturnable<Boolean> cir) {
+        if (LegacyCullingMod.CONFIG.enabled && LegacyCullingMod.CONFIG.disableGroundedArrows
+                && entity instanceof AbstractArrowEntity
+                && ((AbstractArrowEntityAccessor) entity).legacyculling$isInGround()) {
+            CullingStats.disabledRenderer();
+            cir.setReturnValue(false);
+            return;
+        }
         if (LegacyHzbFastPath.shouldCullEntity(entity, cameraX, cameraY, cameraZ)
                 || LegacyVisibilityEngine.shouldCullEntity(entity, cameraX, cameraY, cameraZ)) {
             cir.setReturnValue(false);
