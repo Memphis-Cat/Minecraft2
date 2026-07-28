@@ -19,10 +19,13 @@ public final class CullingConfig {
     public boolean weatherCulling = true;
     public boolean signTextCulling = true;
     public boolean animationCulling = true;
+    public boolean hierarchicalZCulling = true;
     public int entityMaxDistance = 192;
     public int blockEntityMaxDistance = 160;
     public int particleMaxDistance = 96;
     public int particleCellLimit = 48;
+    public int hierarchicalZCaptureInterval = 6;
+    public int hierarchicalZMaxWidth = 384;
 
     public static CullingConfig load() {
         CullingConfig config = new CullingConfig();
@@ -49,10 +52,13 @@ public final class CullingConfig {
         weatherCulling = bool(p, "weatherCulling", weatherCulling);
         signTextCulling = bool(p, "signTextCulling", signTextCulling);
         animationCulling = bool(p, "animationCulling", animationCulling);
+        hierarchicalZCulling = bool(p, "hierarchicalZCulling", hierarchicalZCulling);
         entityMaxDistance = integer(p, "entityMaxDistance", entityMaxDistance, 32, 512);
         blockEntityMaxDistance = integer(p, "blockEntityMaxDistance", blockEntityMaxDistance, 32, 512);
         particleMaxDistance = integer(p, "particleMaxDistance", particleMaxDistance, 16, 256);
         particleCellLimit = integer(p, "particleCellLimit", particleCellLimit, 8, 512);
+        hierarchicalZCaptureInterval = integer(p, "hierarchicalZCaptureInterval", hierarchicalZCaptureInterval, 2, 30);
+        hierarchicalZMaxWidth = integer(p, "hierarchicalZMaxWidth", hierarchicalZMaxWidth, 128, 1024);
     }
 
     private void write(Path path) {
@@ -65,10 +71,13 @@ public final class CullingConfig {
         p.setProperty("weatherCulling", Boolean.toString(weatherCulling));
         p.setProperty("signTextCulling", Boolean.toString(signTextCulling));
         p.setProperty("animationCulling", Boolean.toString(animationCulling));
+        p.setProperty("hierarchicalZCulling", Boolean.toString(hierarchicalZCulling));
         p.setProperty("entityMaxDistance", Integer.toString(entityMaxDistance));
         p.setProperty("blockEntityMaxDistance", Integer.toString(blockEntityMaxDistance));
         p.setProperty("particleMaxDistance", Integer.toString(particleMaxDistance));
         p.setProperty("particleCellLimit", Integer.toString(particleCellLimit));
+        p.setProperty("hierarchicalZCaptureInterval", Integer.toString(hierarchicalZCaptureInterval));
+        p.setProperty("hierarchicalZMaxWidth", Integer.toString(hierarchicalZMaxWidth));
         try {
             Files.createDirectories(path.getParent());
             try (OutputStream out = Files.newOutputStream(path)) {
