@@ -16,9 +16,11 @@ public final class LegacyCullingConfig {
     private static final Path PATH = FabricLoader.getInstance().getConfigDir().resolve("legacy-culling.properties");
 
     public boolean enabled = true;
+    public boolean minimalPerformanceOverlay = true;
     public boolean showStatistics = true;
     public boolean entityCulling = true;
     public int entityCullingIntervalMs = 10;
+    public int occlusionHideFrames = 3;
     public boolean smartEntityCulling = true;
     public boolean entityHierarchicalZ = true;
     public boolean blockEntityCulling = true;
@@ -131,6 +133,7 @@ public final class LegacyCullingConfig {
 
     private void clamp() {
         entityCullingIntervalMs = clamp(entityCullingIntervalMs, 0, 1000);
+        occlusionHideFrames = clamp(occlusionHideFrames, 2, 12);
         tileEntityRenderDistance = clamp(tileEntityRenderDistance, 16, 512);
         hostileEntityRenderDistance = clamp(hostileEntityRenderDistance, 16, 512);
         passiveEntityRenderDistance = clamp(passiveEntityRenderDistance, 16, 512);
