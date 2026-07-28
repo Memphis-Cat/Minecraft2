@@ -73,7 +73,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-            xserver-xorg-core xserver-xorg-video-dummy mesa-utils x11-xserver-utils
+            xserver-xorg-core xserver-xorg-video-dummy mesa-utils x11-xserver-utils x11-utils
           cat > /tmp/xorg-dummy.conf <<'EOF'
           Section "ServerFlags"
               Option "AutoAddDevices" "false"
