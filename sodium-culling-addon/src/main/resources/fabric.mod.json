@@ -3,13 +3,14 @@
   "id": "sodiumculling",
   "version": "${version}",
   "name": "Sodium Culling Addon",
-  "description": "Conservative non-terrain culling extensions for Sodium on Minecraft 26.2.",
+  "description": "Shader-compatible non-terrain culling extensions for Sodium on Minecraft 26.2.",
   "authors": ["Memphis-Cat"],
   "contact": {},
   "license": "MIT",
   "environment": "client",
   "entrypoints": {
-    "client": ["com.memphiscat.sodiumculling.SodiumCullingClient"]
+    "client": ["com.memphiscat.sodiumculling.SodiumCullingClient"],
+    "sodium:config_api_user": ["com.memphiscat.sodiumculling.config.SodiumCullingConfigPage"]
   },
   "mixins": ["sodiumculling.mixins.json"],
   "depends": {

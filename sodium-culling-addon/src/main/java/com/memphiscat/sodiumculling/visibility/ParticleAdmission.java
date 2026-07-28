@@ -18,7 +18,7 @@ public final class ParticleAdmission {
     }
 
     public static boolean reject(Particle particle) {
-        if (!SodiumCullingClient.CONFIG.particleCulling) {
+        if (!SodiumCullingClient.CONFIG.enabled || !SodiumCullingClient.CONFIG.particleCulling) {
             return false;
         }
 
@@ -37,6 +37,7 @@ public final class ParticleAdmission {
         if (VisibilityEngine.camera() != null) {
             double maxDistance = SodiumCullingClient.CONFIG.particleMaxDistance;
             if (VisibilityEngine.camera().position().distanceToSqr(center) > maxDistance * maxDistance) {
+                CullingStats.particleAdmission();
                 return true;
             }
         }
@@ -46,6 +47,8 @@ public final class ParticleAdmission {
         int z = ((int) Math.floor(center.z)) >> 2;
         long key = ((long) x & 0x1FFFFFL) << 42 | ((long) z & 0x1FFFFFL) << 21 | ((long) y & 0x1FFFFFL);
         int count = CELL_COUNTS.merge(key, 1, Integer::sum);
-        return count > SodiumCullingClient.CONFIG.particleCellLimit;
+        boolean rejected = count > SodiumCullingClient.CONFIG.particleCellLimit;
+        if (rejected) CullingStats.particleAdmission();
+        return rejected;
     }
 }

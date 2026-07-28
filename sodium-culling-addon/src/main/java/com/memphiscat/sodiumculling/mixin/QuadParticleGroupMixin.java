@@ -12,6 +12,6 @@ public abstract class QuadParticleGroupMixin {
     @Redirect(method = "extractRenderState", at = @At(value = "INVOKE",
             target = "Lnet/minecraft/client/renderer/culling/Frustum;pointInFrustum(DDD)Z"))
     private boolean sodiumculling$cullParticlePoint(Frustum frustum, double x, double y, double z) {
-        return frustum.pointInFrustum(x, y, z) && !VisibilityEngine.shouldCullParticlePoint(x, y, z);
+        return !VisibilityEngine.shouldCullParticlePoint(x, y, z);
     }
 }

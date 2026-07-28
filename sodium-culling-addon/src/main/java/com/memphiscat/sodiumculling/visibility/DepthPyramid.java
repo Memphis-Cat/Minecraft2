@@ -12,9 +12,14 @@ import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
 import org.lwjgl.opengl.GL11C;
+import org.lwjgl.opengl.GL15C;
+import org.lwjgl.opengl.GL21C;
+import org.lwjgl.opengl.GL30C;
+import org.lwjgl.opengl.GL32C;
 import org.lwjgl.opengl.GL45C;
-import org.lwjgl.system.MemoryUtil;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -23,15 +28,16 @@ import java.util.List;
 /**
  * Conservative previous-frame Hierarchical-Z buffer.
  *
- * <p>26.2 uses reversed depth: clear depth is 0 and larger values are nearer. Each pyramid level
- * stores the minimum depth in its region. A box is considered covered only when every pixel in its
- * projected rectangle contains depth nearer than the box's nearest projected point. The result is
- * never used alone: VisibilityEngine also confirms occlusion with world collision rays.</p>
+ * <p>The original 0.1.0 implementation synchronously copied the full depth texture to system memory,
+ * which can stall the GPU. This implementation uses two pixel-buffer objects and only maps a buffer
+ * after its GPU fence has completed. If neither buffer is ready, the frame simply keeps using the
+ * previous pyramid instead of blocking.</p>
  */
 public final class DepthPyramid {
     private static final List<float[]> LEVELS = new ArrayList<>();
     private static final List<Integer> WIDTHS = new ArrayList<>();
     private static final List<Integer> HEIGHTS = new ArrayList<>();
+    private static final ReadbackSlot[] SLOTS = {new ReadbackSlot(), new ReadbackSlot()};
 
     private static Matrix4f capturedView = new Matrix4f();
     private static Matrix4f capturedProjection = new Matrix4f();
@@ -42,30 +48,27 @@ public final class DepthPyramid {
     private static boolean zeroToOne;
     private static long frameNumber;
     private static long capturedFrame = Long.MIN_VALUE;
-    private static boolean permanentlyUnavailable;
+    private static int allocatedWidth;
+    private static int allocatedHeight;
+    private static long allocatedBytes;
+    private static boolean unavailable;
 
     private DepthPyramid() {
     }
 
     public static void capture(CameraRenderState cameraState) {
         frameNumber++;
-        if (permanentlyUnavailable || !SodiumCullingClient.CONFIG.hierarchicalZCulling
-                || Minecraft.getInstance().level == null || VisibilityEngine.shaderPackActive()) {
-            return;
-        }
-        int interval = SodiumCullingClient.CONFIG.hierarchicalZCaptureInterval;
-        if (frameNumber % interval != 0L) {
-            return;
-        }
-        if (!RenderSystem.isOnRenderThread()) {
+        if (unavailable || !SodiumCullingClient.CONFIG.enabled
+                || !SodiumCullingClient.CONFIG.hierarchicalZCulling
+                || Minecraft.getInstance().level == null || !RenderSystem.isOnRenderThread()) {
             return;
         }
 
         RenderTarget target = Minecraft.getInstance().gameRenderer.mainRenderTarget();
         GpuTexture depthTexture = target.getDepthTexture();
         if (!(depthTexture instanceof GlTexture glTexture)) {
-            permanentlyUnavailable = true;
-            SodiumCullingClient.LOGGER.info("Hierarchical-Z disabled: active renderer is not the OpenGL backend");
+            unavailable = true;
+            SodiumCullingClient.LOGGER.warn("Hierarchical-Z requires the OpenGL backend");
             return;
         }
 
@@ -75,27 +78,96 @@ public final class DepthPyramid {
             return;
         }
 
-        FloatBuffer depth = MemoryUtil.memAllocFloat(width * height);
         try {
-            GL45C.glGetTextureImage(glTexture.glId(), 0, GL11C.GL_DEPTH_COMPONENT, GL11C.GL_FLOAT, depth);
-            depth.rewind();
-            build(depth, width, height, cameraState);
+            ensureBuffers(width, height);
+            consumeCompletedReadbacks();
+
+            int interval = SodiumCullingClient.CONFIG.hierarchicalZCaptureInterval;
+            if (frameNumber % interval != 0L) {
+                return;
+            }
+
+            ReadbackSlot slot = findFreeSlot();
+            if (slot == null) {
+                return;
+            }
+
+            slot.snapshot = new CameraSnapshot(
+                    new Matrix4f(cameraState.viewRotationMatrix),
+                    new Matrix4f(cameraState.projectionMatrix),
+                    cameraState.pos,
+                    RenderSystem.getDevice().getDeviceInfo().isZZeroToOne(),
+                    frameNumber,
+                    width,
+                    height
+            );
+
+            GL15C.glBindBuffer(GL21C.GL_PIXEL_PACK_BUFFER, slot.pbo);
+            GL45C.glGetTextureImage(glTexture.glId(), 0, GL11C.GL_DEPTH_COMPONENT, GL11C.GL_FLOAT,
+                    allocatedBytes, 0L);
+            GL15C.glBindBuffer(GL21C.GL_PIXEL_PACK_BUFFER, 0);
+            slot.fence = GL32C.glFenceSync(GL32C.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
         } catch (RuntimeException | LinkageError error) {
-            permanentlyUnavailable = true;
-            LEVELS.clear();
-            WIDTHS.clear();
-            HEIGHTS.clear();
-            SodiumCullingClient.LOGGER.warn("Hierarchical-Z depth capture failed; disabling it safely", error);
-        } finally {
-            MemoryUtil.memFree(depth);
+            GL15C.glBindBuffer(GL21C.GL_PIXEL_PACK_BUFFER, 0);
+            cleanup();
+            unavailable = true;
+            SodiumCullingClient.LOGGER.warn("Hierarchical-Z asynchronous readback failed", error);
         }
     }
 
-    private static void build(FloatBuffer depth, int width, int height, CameraRenderState cameraState) {
+    private static void ensureBuffers(int width, int height) {
+        if (width == allocatedWidth && height == allocatedHeight && SLOTS[0].pbo != 0) {
+            return;
+        }
+        cleanup();
+        allocatedWidth = width;
+        allocatedHeight = height;
+        allocatedBytes = (long) width * height * Float.BYTES;
+        for (ReadbackSlot slot : SLOTS) {
+            slot.pbo = GL45C.glCreateBuffers();
+            GL45C.glNamedBufferData(slot.pbo, allocatedBytes, GL15C.GL_STREAM_READ);
+        }
+    }
+
+    private static void consumeCompletedReadbacks() {
+        for (ReadbackSlot slot : SLOTS) {
+            if (slot.fence == 0L || slot.snapshot == null) {
+                continue;
+            }
+            int status = GL32C.glClientWaitSync(slot.fence, 0, 0L);
+            if (status != GL32C.GL_ALREADY_SIGNALED && status != GL32C.GL_CONDITION_SATISFIED) {
+                continue;
+            }
+
+            ByteBuffer mapped = GL45C.glMapNamedBufferRange(slot.pbo, 0L, allocatedBytes,
+                    GL30C.GL_MAP_READ_BIT);
+            if (mapped != null) {
+                FloatBuffer depth = mapped.order(ByteOrder.nativeOrder()).asFloatBuffer();
+                build(depth, slot.snapshot);
+                GL45C.glUnmapNamedBuffer(slot.pbo);
+            }
+            GL32C.glDeleteSync(slot.fence);
+            slot.fence = 0L;
+            slot.snapshot = null;
+        }
+    }
+
+    private static ReadbackSlot findFreeSlot() {
+        for (ReadbackSlot slot : SLOTS) {
+            if (slot.fence == 0L) {
+                return slot;
+            }
+        }
+        return null;
+    }
+
+    private static void build(FloatBuffer depth, CameraSnapshot snapshot) {
         LEVELS.clear();
         WIDTHS.clear();
         HEIGHTS.clear();
 
+        int width = snapshot.width;
+        int height = snapshot.height;
         sourceWidth = width;
         sourceHeight = height;
         int maxWidth = SodiumCullingClient.CONFIG.hierarchicalZMaxWidth;
@@ -154,17 +226,17 @@ public final class DepthPyramid {
             previousHeight = nextHeight;
         }
 
-        capturedView = new Matrix4f(cameraState.viewRotationMatrix);
-        capturedProjection = new Matrix4f(cameraState.projectionMatrix);
-        capturedCamera = cameraState.pos;
-        zeroToOne = RenderSystem.getDevice().getDeviceInfo().isZZeroToOne();
-        capturedFrame = frameNumber;
+        capturedView = snapshot.view;
+        capturedProjection = snapshot.projection;
+        capturedCamera = snapshot.camera;
+        zeroToOne = snapshot.zeroToOne;
+        capturedFrame = snapshot.frame;
+        CullingStats.hzbCapture();
     }
 
-    /** Returns true only for a high-confidence full-rectangle depth occlusion. */
     public static boolean isOccluded(AABB box) {
         if (LEVELS.isEmpty() || capturedFrame == Long.MIN_VALUE
-                || frameNumber - capturedFrame > SodiumCullingClient.CONFIG.hierarchicalZCaptureInterval + 2L) {
+                || frameNumber - capturedFrame > SodiumCullingClient.CONFIG.hierarchicalZCaptureInterval * 3L + 4L) {
             return false;
         }
 
@@ -246,7 +318,38 @@ public final class DepthPyramid {
         return regionMinimum > nearestDepth + 0.0035F;
     }
 
+    public static boolean isAvailable() {
+        return !unavailable && !LEVELS.isEmpty();
+    }
+
+    private static void cleanup() {
+        for (ReadbackSlot slot : SLOTS) {
+            if (slot.fence != 0L) {
+                GL32C.glDeleteSync(slot.fence);
+                slot.fence = 0L;
+            }
+            if (slot.pbo != 0) {
+                GL45C.glDeleteBuffers(slot.pbo);
+                slot.pbo = 0;
+            }
+            slot.snapshot = null;
+        }
+        allocatedWidth = 0;
+        allocatedHeight = 0;
+        allocatedBytes = 0L;
+    }
+
     private static int clamp(int value, int min, int max) {
         return Math.max(min, Math.min(max, value));
+    }
+
+    private static final class ReadbackSlot {
+        private int pbo;
+        private long fence;
+        private CameraSnapshot snapshot;
+    }
+
+    private record CameraSnapshot(Matrix4f view, Matrix4f projection, Vec3 camera, boolean zeroToOne,
+                                  long frame, int width, int height) {
     }
 }

@@ -1,6 +1,7 @@
 package com.memphiscat.sodiumculling.mixin;
 
 import com.memphiscat.sodiumculling.SodiumCullingClient;
+import com.memphiscat.sodiumculling.visibility.CullingStats;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.LeavesBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -14,7 +15,9 @@ public abstract class LeavesBlockMixin {
     @Inject(method = "skipRendering", at = @At("HEAD"), cancellable = true)
     private void sodiumculling$skipInternalLeafFace(BlockState state, BlockState adjacent,
                                                      Direction side, CallbackInfoReturnable<Boolean> cir) {
-        if (SodiumCullingClient.CONFIG.leafCulling && adjacent.getBlock() instanceof LeavesBlock) {
+        if (SodiumCullingClient.CONFIG.enabled && SodiumCullingClient.CONFIG.leafCulling
+                && adjacent.getBlock() instanceof LeavesBlock) {
+            CullingStats.leafFace();
             cir.setReturnValue(true);
         }
     }

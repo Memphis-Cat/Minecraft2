@@ -12,11 +12,16 @@ base {
 
 repositories {
     mavenCentral()
+    maven {
+        name = 'CaffeineMC'
+        url = 'https://maven.caffeinemc.net/releases'
+    }
 }
 
 dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
     implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.caffeinemc:sodium-fabric-api:${project.sodium_version}"
 }
 
 processResources {

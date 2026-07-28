@@ -29,7 +29,7 @@ public abstract class AbstractSignRendererMixin {
     }
 
     private static boolean shouldRenderSide(SignBlockEntity sign, boolean front) {
-        if (!SodiumCullingClient.CONFIG.signTextCulling) {
+        if (!SodiumCullingClient.CONFIG.enabled || !SodiumCullingClient.CONFIG.signTextCulling) {
             return true;
         }
 

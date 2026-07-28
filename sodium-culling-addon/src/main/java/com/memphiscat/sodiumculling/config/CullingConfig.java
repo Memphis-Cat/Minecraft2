@@ -11,6 +11,10 @@ import java.nio.file.Path;
 import java.util.Properties;
 
 public final class CullingConfig {
+    private static final Path PATH = FabricLoader.getInstance().getConfigDir().resolve("sodium-culling.properties");
+
+    public boolean enabled = true;
+    public boolean showStatistics = true;
     public boolean entityCulling = true;
     public boolean blockEntityCulling = true;
     public boolean particleCulling = true;
@@ -18,7 +22,6 @@ public final class CullingConfig {
     public boolean leafCulling = true;
     public boolean weatherCulling = true;
     public boolean signTextCulling = true;
-    public boolean animationCulling = true;
     public boolean hierarchicalZCulling = true;
     public int entityMaxDistance = 192;
     public int blockEntityMaxDistance = 160;
@@ -29,21 +32,22 @@ public final class CullingConfig {
 
     public static CullingConfig load() {
         CullingConfig config = new CullingConfig();
-        Path path = FabricLoader.getInstance().getConfigDir().resolve("sodium-culling.properties");
         Properties properties = new Properties();
-        if (Files.isRegularFile(path)) {
-            try (InputStream in = Files.newInputStream(path)) {
+        if (Files.isRegularFile(PATH)) {
+            try (InputStream in = Files.newInputStream(PATH)) {
                 properties.load(in);
                 config.read(properties);
             } catch (IOException ex) {
-                SodiumCullingClient.LOGGER.warn("Could not read {}", path, ex);
+                SodiumCullingClient.LOGGER.warn("Could not read {}", PATH, ex);
             }
         }
-        config.write(path);
+        config.save();
         return config;
     }
 
     private void read(Properties p) {
+        enabled = bool(p, "enabled", enabled);
+        showStatistics = bool(p, "showStatistics", showStatistics);
         entityCulling = bool(p, "entityCulling", entityCulling);
         blockEntityCulling = bool(p, "blockEntityCulling", blockEntityCulling);
         particleCulling = bool(p, "particleCulling", particleCulling);
@@ -51,7 +55,6 @@ public final class CullingConfig {
         leafCulling = bool(p, "leafCulling", leafCulling);
         weatherCulling = bool(p, "weatherCulling", weatherCulling);
         signTextCulling = bool(p, "signTextCulling", signTextCulling);
-        animationCulling = bool(p, "animationCulling", animationCulling);
         hierarchicalZCulling = bool(p, "hierarchicalZCulling", hierarchicalZCulling);
         entityMaxDistance = integer(p, "entityMaxDistance", entityMaxDistance, 32, 512);
         blockEntityMaxDistance = integer(p, "blockEntityMaxDistance", blockEntityMaxDistance, 32, 512);
@@ -61,8 +64,10 @@ public final class CullingConfig {
         hierarchicalZMaxWidth = integer(p, "hierarchicalZMaxWidth", hierarchicalZMaxWidth, 128, 1024);
     }
 
-    private void write(Path path) {
+    public synchronized void save() {
         Properties p = new Properties();
+        p.setProperty("enabled", Boolean.toString(enabled));
+        p.setProperty("showStatistics", Boolean.toString(showStatistics));
         p.setProperty("entityCulling", Boolean.toString(entityCulling));
         p.setProperty("blockEntityCulling", Boolean.toString(blockEntityCulling));
         p.setProperty("particleCulling", Boolean.toString(particleCulling));
@@ -70,7 +75,6 @@ public final class CullingConfig {
         p.setProperty("leafCulling", Boolean.toString(leafCulling));
         p.setProperty("weatherCulling", Boolean.toString(weatherCulling));
         p.setProperty("signTextCulling", Boolean.toString(signTextCulling));
-        p.setProperty("animationCulling", Boolean.toString(animationCulling));
         p.setProperty("hierarchicalZCulling", Boolean.toString(hierarchicalZCulling));
         p.setProperty("entityMaxDistance", Integer.toString(entityMaxDistance));
         p.setProperty("blockEntityMaxDistance", Integer.toString(blockEntityMaxDistance));
@@ -79,12 +83,12 @@ public final class CullingConfig {
         p.setProperty("hierarchicalZCaptureInterval", Integer.toString(hierarchicalZCaptureInterval));
         p.setProperty("hierarchicalZMaxWidth", Integer.toString(hierarchicalZMaxWidth));
         try {
-            Files.createDirectories(path.getParent());
-            try (OutputStream out = Files.newOutputStream(path)) {
-                p.store(out, "Sodium Culling Addon - conservative defaults");
+            Files.createDirectories(PATH.getParent());
+            try (OutputStream out = Files.newOutputStream(PATH)) {
+                p.store(out, "Sodium Culling Addon settings");
             }
         } catch (IOException ex) {
-            SodiumCullingClient.LOGGER.warn("Could not write {}", path, ex);
+            SodiumCullingClient.LOGGER.warn("Could not write {}", PATH, ex);
         }
     }
 

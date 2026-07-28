@@ -7,12 +7,13 @@ import org.slf4j.LoggerFactory;
 
 public final class SodiumCullingClient implements ClientModInitializer {
     public static final String MOD_ID = "sodiumculling";
+    public static final String VERSION = "0.2.0";
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
     public static CullingConfig CONFIG;
 
     @Override
     public void onInitializeClient() {
         CONFIG = CullingConfig.load();
-        LOGGER.info("Sodium Culling Addon initialized with conservative compatibility settings");
+        LOGGER.info("Sodium Culling Addon {} initialized; all configured culling systems are active", VERSION);
     }
 }
