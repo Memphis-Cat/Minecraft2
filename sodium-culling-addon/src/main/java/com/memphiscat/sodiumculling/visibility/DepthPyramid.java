@@ -27,11 +27,7 @@ import java.util.List;
 
 /**
  * Conservative previous-frame Hierarchical-Z buffer.
- *
- * <p>The original 0.1.0 implementation synchronously copied the full depth texture to system memory,
- * which can stall the GPU. This implementation uses two pixel-buffer objects and only maps a buffer
- * after its GPU fence has completed. If neither buffer is ready, the frame simply keeps using the
- * previous pyramid instead of blocking.</p>
+ * Uses two pixel-buffer objects and only maps a buffer after its GPU fence has completed.
  */
 public final class DepthPyramid {
     private static final List<float[]> LEVELS = new ArrayList<>();
@@ -104,7 +100,7 @@ public final class DepthPyramid {
 
             GL15C.glBindBuffer(GL21C.GL_PIXEL_PACK_BUFFER, slot.pbo);
             GL45C.glGetTextureImage(glTexture.glId(), 0, GL11C.GL_DEPTH_COMPONENT, GL11C.GL_FLOAT,
-                    allocatedBytes, 0L);
+                    Math.toIntExact(allocatedBytes), 0L);
             GL15C.glBindBuffer(GL21C.GL_PIXEL_PACK_BUFFER, 0);
             slot.fence = GL32C.glFenceSync(GL32C.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
         } catch (RuntimeException | LinkageError error) {
