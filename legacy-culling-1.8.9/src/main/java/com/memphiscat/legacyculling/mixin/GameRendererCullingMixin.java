@@ -12,6 +12,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(GameRenderer.class)
 public abstract class GameRendererCullingMixin {
+    @Inject(method = "renderWorld(IFJ)V", at = @At("HEAD"))
+    private void legacyculling$beginVisibilityFrame(int pass, float tickDelta, long finishTimeNano,
+                                                     CallbackInfo ci) {
+        // Pass 2 is the normal renderer. Pass 0 is the first anaglyph eye.
+        if (pass == 2 || pass == 0) LegacyFrameState.beginFrame();
+    }
+
     @Inject(method = "renderWorld(IFJ)V",
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/client/render/GameRenderer;updateFog(F)V",
