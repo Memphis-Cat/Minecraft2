@@ -58,3 +58,9 @@ tasks.named('sourcesJar', Jar).configure {
     exclude 'fabric.mod.json'
     exclude 'legacyculling.mixins.json'
 }
+
+// The CI starts one explicitly configured X server. Loom's automatic xvfb wrapper
+// must be disabled or old LWJGL 2 sees a nested display without XRandR modes.
+tasks.named('runClient').configure {
+    useXvfb.set(false)
+}
