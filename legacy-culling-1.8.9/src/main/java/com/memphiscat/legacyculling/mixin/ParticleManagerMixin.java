@@ -2,6 +2,7 @@ package com.memphiscat.legacyculling.mixin;
 
 import com.memphiscat.legacyculling.LegacyCullingMod;
 import com.memphiscat.legacyculling.visibility.CullingStats;
+import com.memphiscat.legacyculling.visibility.LegacyHzbFastPath;
 import com.memphiscat.legacyculling.visibility.LegacyVisibilityEngine;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.particle.Particle;
@@ -74,9 +75,10 @@ public abstract class ParticleManagerMixin {
     @Redirect(method = "renderParticles", at = @At(value = "INVOKE",
             target = "Lnet/minecraft/client/particle/Particle;draw(Lnet/minecraft/client/render/BufferBuilder;Lnet/minecraft/entity/Entity;FFFFFF)V"))
     private void legacyculling$cullParticleDraw(Particle particle, BufferBuilder buffer, Entity camera,
-                                                float tickDelta, float rotationX, float rotationXZ,
-                                                float rotationZ, float rotationYZ, float rotationXY) {
-        if (!LegacyVisibilityEngine.shouldCullParticle(particle.x, particle.y, particle.z)) {
+                                                 float tickDelta, float rotationX, float rotationXZ,
+                                                 float rotationZ, float rotationYZ, float rotationXY) {
+        if (!LegacyHzbFastPath.shouldCullParticle(particle.x, particle.y, particle.z)
+                && !LegacyVisibilityEngine.shouldCullParticle(particle.x, particle.y, particle.z)) {
             particle.draw(buffer, camera, tickDelta, rotationX, rotationXZ, rotationZ, rotationYZ, rotationXY);
         }
     }
@@ -84,9 +86,10 @@ public abstract class ParticleManagerMixin {
     @Redirect(method = "method_1299", at = @At(value = "INVOKE",
             target = "Lnet/minecraft/client/particle/Particle;draw(Lnet/minecraft/client/render/BufferBuilder;Lnet/minecraft/entity/Entity;FFFFFF)V"))
     private void legacyculling$cullLitParticleDraw(Particle particle, BufferBuilder buffer, Entity camera,
-                                                   float tickDelta, float rotationX, float rotationXZ,
-                                                   float rotationZ, float rotationYZ, float rotationXY) {
-        if (!LegacyVisibilityEngine.shouldCullParticle(particle.x, particle.y, particle.z)) {
+                                                    float tickDelta, float rotationX, float rotationXZ,
+                                                    float rotationZ, float rotationYZ, float rotationXY) {
+        if (!LegacyHzbFastPath.shouldCullParticle(particle.x, particle.y, particle.z)
+                && !LegacyVisibilityEngine.shouldCullParticle(particle.x, particle.y, particle.z)) {
             particle.draw(buffer, camera, tickDelta, rotationX, rotationXZ, rotationZ, rotationYZ, rotationXY);
         }
     }
