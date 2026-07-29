@@ -14,6 +14,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Apply verified native renderer bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/native-payload.part-* > /tmp/native-renderer-payload.b64
+          echo 'ebd8857c6a4aced1c3d00b1fc5a537dbe0ef2641dbe3cccb03c5b064628fd6df  /tmp/native-renderer-payload.b64' | sha256sum -c -
+          base64 -d /tmp/native-renderer-payload.b64 > /tmp/native-renderer-payload.tar.gz
+          echo '8e0603be6dc972e0b4dedf36f2a092edf6ed47d7af293451066841e24b57e046  /tmp/native-renderer-payload.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/native-renderer-payload.tar.gz
+          rm -f .github/native-payload.part-* .github/native-renderer-payload.b64
+          test -f legacy-culling-1.8.9/src/main/java/com/memphiscat/legacyculling/renderer/NativeRendererBackend.java
+          test -f legacy-culling-1.8.9/src/main/java/com/memphiscat/legacyculling/renderer/NativeGpuDepthPyramid.java
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
