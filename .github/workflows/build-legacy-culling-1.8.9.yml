@@ -29,6 +29,29 @@ jobs:
           set -o pipefail
           gradle -p legacy-culling-1.8.9 clean build --stacktrace 2>&1 | tee legacy-build.log
 
+      - name: Inspect mapped renderer API
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle -p legacy-culling-1.8.9 writeRendererClasspath --no-daemon
+          classpath=$(cat legacy-culling-1.8.9/build/renderer-classpath.txt)
+          : > legacy-renderer-api.txt
+          for class in \
+            net.minecraft.client.render.WorldRenderer \
+            net.minecraft.client.world.BuiltChunk \
+            net.minecraft.client.world.BuiltChunk\$ChunkData \
+            net.minecraft.client.render.chunk.ChunkBuilder \
+            net.minecraft.client.render.chunk.ChunkOcclusionData \
+            net.minecraft.client.render.chunk.ChunkOcclusionDataBuilder \
+            net.minecraft.client.gl.VertexBuffer \
+            net.minecraft.client.render.BufferBuilder \
+            net.minecraft.client.render.Tessellator \
+            net.minecraft.client.render.VertexFormats; do
+            echo "===== $class =====" >> legacy-renderer-api.txt
+            javap -classpath "$classpath" -p -c "$class" >> legacy-renderer-api.txt 2>&1 || true
+          done
+          cat legacy-renderer-api.txt
+
       - name: Validate packaged runtime jar
         shell: bash
         run: |
@@ -181,6 +204,7 @@ jobs:
           name: legacy-culling-1.8.9-build-info
           path: |
             legacy-build.log
+            legacy-renderer-api.txt
             legacy-client-smoke.log
             legacy-smoke-latest.log
             /tmp/Xorg.99.log
