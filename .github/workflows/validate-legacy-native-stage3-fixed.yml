@@ -1,0 +1,190 @@
+name: Validate Legacy Native Stage Three Fixed
+
+on:
+  pull_request:
+    branches: [legacy-native-stage3-ci]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct and patch Stage 3 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/stage3-overlay.part-* > /tmp/stage3-overlay.b64
+          test "$(wc -c < /tmp/stage3-overlay.b64)" -eq 38848
+          base64 -d /tmp/stage3-overlay.b64 > /tmp/stage3-overlay.tar.gz
+          echo '7941c98d9c84e7d876328e060071898a83ec408d467ea9e79e6005c0bd63f0cd  /tmp/stage3-overlay.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/stage3-overlay.tar.gz -C legacy-culling-1.8.9
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path('legacy-culling-1.8.9/src/main/java/com/memphiscat/legacyculling')
+          p = root / 'performance/AdaptiveRenderQueue.java'
+          s = p.read_text()
+          s = s.replace('import net.minecraft.entity.projectile.ProjectileEntity;\n', '')
+          s = s.replace('                || entity instanceof PassiveEntity || entity instanceof ProjectileEntity) {',
+                        '                || entity instanceof PassiveEntity) {')
+          p.write_text(s)
+          p = root / 'visibility/GpuVisibilityPipeline.java'
+          s = p.read_text()
+          s = s.replace('GL43.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, 0, candidateBuffer);',
+                        'GL30.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, 0, candidateBuffer);')
+          s = s.replace('GL43.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, 1, commandBuffer);',
+                        'GL30.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, 1, commandBuffer);')
+          p.write_text(s)
+          PY
+          grep -q 'mod_version=0.4.0-stage3' legacy-culling-1.8.9/gradle.properties
+          ! grep -R 'ProjectileEntity' legacy-culling-1.8.9/src/main/java/com/memphiscat/legacyculling/performance/AdaptiveRenderQueue.java
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.1'
+
+      - name: Compile and remap
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle -p legacy-culling-1.8.9 clean build --stacktrace 2>&1 | tee legacy-stage3-build.log
+
+      - name: Validate runtime jar
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, pathlib, zipfile
+          libs = pathlib.Path('legacy-culling-1.8.9/build/libs')
+          runtime = next(p for p in libs.glob('*.jar') if 'source' not in p.name.lower() and 'developer' not in p.name.lower())
+          required = {
+              'com/memphiscat/legacyculling/performance/AdaptiveRenderQueue.class',
+              'com/memphiscat/legacyculling/visibility/GpuVisibilityPipeline.class',
+              'com/memphiscat/legacyculling/renderer/NativeRegionTerrainRenderer.class',
+              'com/memphiscat/legacyculling/renderer/NativeRendererCoordinator.class',
+          }
+          with zipfile.ZipFile(runtime) as z:
+              names = set(z.namelist())
+              assert not sorted(required - names), sorted(required - names)
+              mixins = json.loads(z.read('legacyculling.mixins.json'))
+              package = mixins['package'].replace('.', '/')
+              missing = [m for m in mixins['client'] if f'{package}/{m}.class' not in names]
+              assert not missing, missing
+          print(runtime)
+          PY
+
+      - name: Download assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          success=0
+          for attempt in 1 2 3; do
+            if gradle -p legacy-culling-1.8.9 downloadAssets --stacktrace --no-daemon; then success=1; break; fi
+            rm -rf "$HOME/.gradle/caches/fabric-loom/assets"
+            sleep $((attempt * 3))
+          done
+          test "$success" -eq 1
+
+      - name: Start dummy OpenGL display
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq xserver-xorg-core xserver-xorg-video-dummy mesa-utils x11-xserver-utils x11-utils
+          cat > /tmp/xorg-dummy.conf <<'XORG'
+          Section "ServerFlags"
+              Option "AutoAddDevices" "false"
+              Option "AllowMouseOpenFail" "true"
+          EndSection
+          Section "Device"
+              Identifier "DummyDevice"
+              Driver "dummy"
+              VideoRam 256000
+          EndSection
+          Section "Monitor"
+              Identifier "DummyMonitor"
+              HorizSync 5.0-1000.0
+              VertRefresh 5.0-200.0
+              Modeline "1280x720" 74.50 1280 1344 1472 1664 720 723 728 748 -HSync +Vsync
+          EndSection
+          Section "Screen"
+              Identifier "DummyScreen"
+              Device "DummyDevice"
+              Monitor "DummyMonitor"
+              DefaultDepth 24
+              SubSection "Display"
+                  Depth 24
+                  Modes "1280x720"
+              EndSubSection
+          EndSection
+          Section "ServerLayout"
+              Identifier "DummyLayout"
+              Screen "DummyScreen"
+          EndSection
+          XORG
+          sudo Xorg :99 -config /tmp/xorg-dummy.conf -noreset -ac +extension GLX +extension RANDR +extension RENDER -logfile /tmp/Xorg.99.log >/tmp/xorg-stdout.log 2>&1 &
+          for attempt in $(seq 1 20); do
+            DISPLAY=:99 xdpyinfo >/tmp/xdpyinfo.txt 2>&1 && break
+            sleep 1
+          done
+          DISPLAY=:99 xdpyinfo >/tmp/xdpyinfo.txt
+          DISPLAY=:99 glxinfo -B >/tmp/glxinfo.txt
+
+      - name: Client startup smoke test
+        shell: bash
+        env:
+          DISPLAY: ':99'
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
+          set +e
+          timeout 180s gradle -p legacy-culling-1.8.9 runClient --stacktrace --no-daemon > legacy-stage3-smoke.log 2>&1
+          exit_code=$?
+          set -e
+          cat legacy-stage3-smoke.log
+          grep -q '\[LegacyCulling\] INIT_OK Legacy Culling initialized for Minecraft 1.8.9' legacy-stage3-smoke.log
+          if grep -E 'Mixin apply failed|InjectionError|InvalidMixinException|MixinApplyError|IllegalClassLoadError|Mod resolution encountered|Could not execute entrypoint|NoClassDefFoundError|NoSuchMethodError' legacy-stage3-smoke.log; then exit 1; fi
+          if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 124 ]; then exit "$exit_code"; fi
+
+      - name: Package release
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          runtime=$(find legacy-culling-1.8.9/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*source*' ! -name '*developer*' | head -n 1)
+          cp "$runtime" release/INSTALL-THIS-Legacy-Culling-1.8.9-0.4.0-Stage3.jar
+          zip -qr release/Legacy-Culling-1.8.9-0.4.0-Stage3-Source-Project.zip legacy-culling-1.8.9 \
+            -x 'legacy-culling-1.8.9/build/*' 'legacy-culling-1.8.9/run/*' \
+               'legacy-culling-1.8.9/.gradle/*' 'legacy-culling-1.8.9/.build-tools/*'
+          sha256sum release/* | tee release/SHA256SUMS.txt
+
+      - name: Upload release
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-culling-1.8.9-0.4.0-stage3-fixed
+          path: release/*
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-native-stage3-fixed-logs
+          path: |
+            legacy-stage3-build.log
+            legacy-stage3-smoke.log
+            /tmp/Xorg.99.log
+            /tmp/xorg-stdout.log
+            /tmp/xdpyinfo.txt
+            /tmp/glxinfo.txt
+          if-no-files-found: warn
+          retention-days: 7
