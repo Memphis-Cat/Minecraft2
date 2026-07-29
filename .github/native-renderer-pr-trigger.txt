@@ -1,1 +1,1 @@
-Compile current native renderer source directly after CI workflow repair.
+Validate the current stage-one region, chunk, section, portal and shared culling architecture.
