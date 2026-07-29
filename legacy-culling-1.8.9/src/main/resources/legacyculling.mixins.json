@@ -5,6 +5,7 @@
   "compatibilityLevel": "JAVA_8",
   "client": [
     "AbstractArrowEntityAccessor",
+    "AbstractChunkRenderManagerAccessor",
     "BaseLeavesBlockMixin",
     "BlockEntityRenderDispatcherMixin",
     "ClientWorldFarTerrainMixin",
@@ -23,6 +24,8 @@
     "SpriteAtlasTextureMixin",
     "StuckArrowsFeatureRendererMixin",
     "TextRendererMixin",
+    "VboChunkRenderManagerMixin",
+    "VertexBufferCaptureMixin",
     "VideoOptionsScreenMixin",
     "WorldRendererChunkUpdateMixin",
     "WorldRendererFarTerrainMixin"

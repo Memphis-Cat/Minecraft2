@@ -20,9 +20,15 @@ public final class LegacyCullingConfig {
     public boolean showStatistics = true;
 
     // 0 = vanilla compatibility, 1 = native renderer experimental.
-    public int rendererBackend = 0;
+    public int rendererBackend = 1;
     public boolean sectionVisibilityHierarchy = true;
     public int sectionGraphBuildsPerFrame = 2;
+
+    // Stage two: vanilla-built solid meshes are repacked into region VBOs.
+    public boolean nativeTerrainBatching = true;
+    public int nativeRegionSizeChunks = 8;
+    public int nativeRegionBuildsPerFrame = 2;
+    public int nativeRegionCacheLimit = 128;
 
     public boolean entityCulling = true;
     public int entityCullingIntervalMs = 10;
@@ -133,6 +139,9 @@ public final class LegacyCullingConfig {
     private void clamp() {
         rendererBackend = clamp(rendererBackend, 0, 1);
         sectionGraphBuildsPerFrame = clamp(sectionGraphBuildsPerFrame, 1, 16);
+        nativeRegionSizeChunks = clamp(nativeRegionSizeChunks, 2, 16);
+        nativeRegionBuildsPerFrame = clamp(nativeRegionBuildsPerFrame, 1, 16);
+        nativeRegionCacheLimit = clamp(nativeRegionCacheLimit, 16, 512);
         entityCullingIntervalMs = clamp(entityCullingIntervalMs, 0, 1000);
         occlusionHideFrames = clamp(occlusionHideFrames, 2, 12);
         tileEntityRenderDistance = clamp(tileEntityRenderDistance, 16, 512);
