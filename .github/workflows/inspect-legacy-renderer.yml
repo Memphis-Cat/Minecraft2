@@ -2,7 +2,7 @@ name: Inspect Legacy Renderer Internals
 
 on:
   push:
-    branches: [legacy-culling-1.8.9]
+    branches: [legacy-renderer-api-inspect]
   workflow_dispatch:
 
 permissions:
@@ -38,6 +38,7 @@ jobs:
             'net.minecraft.client.render.world.VboChunkRenderFactoryImpl'
             'net.minecraft.client.render.world.ListChunkRenderFactoryImpl'
             'net.minecraft.client.render.VertexBuffer'
+            'net.minecraft.client.render.VertexBufferUploader'
             'net.minecraft.client.render.VertexFormat'
             'net.minecraft.client.render.VertexFormatElement'
             'net.minecraft.client.render.RenderLayer'
