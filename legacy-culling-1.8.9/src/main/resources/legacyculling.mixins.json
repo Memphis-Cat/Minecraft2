@@ -1,0 +1,33 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.memphiscat.legacyculling.mixin",
+  "compatibilityLevel": "JAVA_8",
+  "client": [
+    "AbstractArrowEntityAccessor",
+    "BaseLeavesBlockMixin",
+    "BlockEntityRenderDispatcherMixin",
+    "ClientWorldFarTerrainMixin",
+    "DebugHudMixin",
+    "EntityParticleLightMixin",
+    "EntityRenderDispatcherMixin",
+    "EntityRendererNametagMixin",
+    "GameRendererCullingMixin",
+    "ItemEntityRendererMixin",
+    "ItemRendererMixin",
+    "MinecraftClientWorldSwapMixin",
+    "ParticleManagerMixin",
+    "PerformanceOverlayMixin",
+    "ResourcePackEntryMixin",
+    "SignBlockEntityRendererMixin",
+    "SpriteAtlasTextureMixin",
+    "StuckArrowsFeatureRendererMixin",
+    "TextRendererMixin",
+    "VideoOptionsScreenMixin",
+    "WorldRendererChunkUpdateMixin",
+    "WorldRendererFarTerrainMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

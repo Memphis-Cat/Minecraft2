@@ -1,0 +1,76 @@
+plugins {
+    id 'net.fabricmc.fabric-loom-remap' version "${loom_version}"
+    id 'legacy-looming' version "${loom_version}"
+    id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://repo.legacyfabric.net/repository/legacyfabric/' }
+}
+
+legacyLooming {
+    intermediaryVersion = 1
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings(legacy.yarn(project.minecraft_version, project.yarn_build))
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.legacyfabric.legacy-fabric-api:legacy-fabric-api:${project.fabric_version}"
+}
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') {
+        expand 'version': inputs.properties.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    if (JavaVersion.current().isJava9Compatible()) {
+        options.release = 8
+    }
+}
+
+java {
+    withSourcesJar()
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+
+jar {
+    from('LICENSE') {
+        rename { "LICENSE_${project.archives_base_name}" }
+    }
+}
+
+tasks.named('sourcesJar', Jar).configure {
+    archiveClassifier = 'developer-sources-NOT-A-MOD'
+    exclude 'fabric.mod.json'
+    exclude 'legacyculling.mixins.json'
+}
+
+// Used by CI to inspect the exact mapped 1.8.9 renderer API before native-backend work.
+tasks.register('writeRendererClasspath') {
+    dependsOn tasks.named('classes')
+    doLast {
+        def output = layout.buildDirectory.file('renderer-classpath.txt').get().asFile
+        output.parentFile.mkdirs()
+        output.text = sourceSets.main.compileClasspath.asPath
+    }
+}
+
+// The CI starts one explicitly configured X server. Loom's automatic xvfb wrapper
+// must be disabled or old LWJGL 2 sees a nested display without XRandR modes.
+tasks.named('runClient').configure {
+    useXvfb.set(false)
+}

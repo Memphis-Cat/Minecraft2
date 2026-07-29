@@ -1,0 +1,58 @@
+name: Inspect Legacy Renderer Internals
+
+on:
+  push:
+    branches: [legacy-culling-1.8.9]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.1'
+      - name: Resolve mapped classes
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle -p legacy-culling-1.8.9 writeRendererClasspath --no-daemon
+          classpath=$(cat legacy-culling-1.8.9/build/renderer-classpath.txt)
+          : > native-renderer-api.txt
+          classes=(
+            'net.minecraft.client.render.WorldRenderer$ChunkInfo'
+            'net.minecraft.client.world.ChunkAssemblyHelper'
+            'net.minecraft.client.render.BuiltChunkStorage'
+            'net.minecraft.client.render.world.AbstractChunkRenderManager'
+            'net.minecraft.client.render.world.VboChunkRenderManager'
+            'net.minecraft.client.render.world.ListedChunkRenderManager'
+            'net.minecraft.client.render.world.ChunkRenderFactory'
+            'net.minecraft.client.render.world.VboChunkRenderFactoryImpl'
+            'net.minecraft.client.render.world.ListChunkRenderFactoryImpl'
+            'net.minecraft.client.render.VertexBuffer'
+            'net.minecraft.client.render.VertexFormat'
+            'net.minecraft.client.render.VertexFormatElement'
+            'net.minecraft.client.render.RenderLayer'
+            'net.minecraft.client.render.CameraView'
+            'net.minecraft.client.render.BaseFrustum'
+            'net.minecraft.client.render.Frustum'
+          )
+          for class in "${classes[@]}"; do
+            echo "===== $class =====" >> native-renderer-api.txt
+            javap -classpath "$classpath" -p -c "$class" >> native-renderer-api.txt 2>&1 || true
+          done
+          cat native-renderer-api.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-renderer-api
+          path: native-renderer-api.txt
+          if-no-files-found: error
+          retention-days: 7

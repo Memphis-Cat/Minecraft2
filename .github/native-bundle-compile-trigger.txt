@@ -1,0 +1,1 @@
+Compile the verified Legacy Culling 0.4.0 native renderer bundle after retargeting the CI base.
