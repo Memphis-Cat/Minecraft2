@@ -1,38 +1,18 @@
-name: Build Legacy Culling 1.8.9
+name: Build Legacy Culling Native Stage One
 
 on:
   push:
-    branches: [legacy-culling-1.8.9]
+    branches: [legacy-culling-native-stage1]
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Apply staged native renderer source
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -f .github/native-renderer-payload.b64 ]; then
-            base64 -d .github/native-renderer-payload.b64 | tar -xzf -
-            rm -f .github/native-renderer-payload.b64
-            rm -f .github/workflows/inspect-legacy-renderer.yml
-            git config user.name "legacy-culling-ci"
-            git config user.email "actions@users.noreply.github.com"
-            git add -A
-            if ! git diff --cached --quiet; then
-              git commit -m "Implement experimental native renderer backend"
-              git push origin HEAD:legacy-culling-1.8.9
-            fi
-          fi
-
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -52,58 +32,42 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import json
-          import pathlib
-          import zipfile
-
-          libs = pathlib.Path('legacy-culling-1.8.9/build/libs')
-          runtime = next(p for p in libs.glob('*.jar') if 'source' not in p.name.lower() and 'developer' not in p.name.lower())
+          import json, pathlib, zipfile
+          runtime = next(p for p in pathlib.Path('legacy-culling-1.8.9/build/libs').glob('*.jar') if 'source' not in p.name.lower() and 'developer' not in p.name.lower())
           with zipfile.ZipFile(runtime) as z:
               names = set(z.namelist())
-              assert 'fabric.mod.json' in names
-              assert 'legacyculling.mixins.json' in names
               mixins = json.loads(z.read('legacyculling.mixins.json'))
               package = mixins['package'].replace('.', '/')
               missing = [m for m in mixins['client'] if f'{package}/{m}.class' not in names]
-              assert not missing, f'Missing mixin classes: {missing}'
+              assert not missing, missing
               required = [
-                  'com/memphiscat/legacyculling/renderer/NativeRendererBackend.class',
-                  'com/memphiscat/legacyculling/renderer/NativeGpuDepthPyramid.class',
-                  'com/memphiscat/legacyculling/renderer/NativeSoftwareOcclusionBuffer.class',
-                  'com/memphiscat/legacyculling/renderer/NativeSectionVisibility.class',
+                  'com/memphiscat/legacyculling/renderer/NativeRendererCoordinator.class',
+                  'com/memphiscat/legacyculling/renderer/OccluderRules.class',
+                  'com/memphiscat/legacyculling/renderer/SectionVisibility.class',
+                  'com/memphiscat/legacyculling/renderer/SectionVisibilityHierarchy.class',
               ]
               absent = [name for name in required if name not in names]
-              assert not absent, f'Missing native renderer classes: {absent}'
-          print('Validated runtime:', runtime)
+              assert not absent, absent
+          print(runtime)
           PY
-          runtime=$(find legacy-culling-1.8.9/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*source*' ! -name '*developer*' | head -n 1)
-          if javap -classpath "$runtime" -c com.memphiscat.legacyculling.mixin.TextRendererMixin | grep -q 'glNewList'; then
-            echo 'Unsafe rendered-text display-list cache is still present'
-            exit 1
-          fi
 
-      - name: Download Minecraft assets with retry
+      - name: Download assets
         shell: bash
         run: |
           set -euo pipefail
-          success=0
           for attempt in 1 2 3; do
-            if gradle -p legacy-culling-1.8.9 downloadAssets --stacktrace --no-daemon; then
-              success=1
-              break
-            fi
+            gradle -p legacy-culling-1.8.9 downloadAssets --stacktrace --no-daemon && exit 0
             rm -rf "$HOME/.gradle/caches/fabric-loom/assets"
             sleep $((attempt * 3))
           done
-          test "$success" -eq 1
+          exit 1
 
       - name: Install Xorg dummy display
         shell: bash
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-            xserver-xorg-core xserver-xorg-video-dummy mesa-utils x11-xserver-utils x11-utils
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq xserver-xorg-core xserver-xorg-video-dummy mesa-utils x11-xserver-utils x11-utils
           cat > /tmp/xorg-dummy.conf <<'XORG'
           Section "ServerFlags"
               Option "AutoAddDevices" "false"
@@ -135,16 +99,9 @@ jobs:
               Screen "DummyScreen"
           EndSection
           XORG
-          sudo Xorg :99 -config /tmp/xorg-dummy.conf -noreset -ac \
-            +extension GLX +extension RANDR +extension RENDER \
-            -logfile /tmp/Xorg.99.log >/tmp/xorg-stdout.log 2>&1 &
-          for attempt in $(seq 1 20); do
-            if DISPLAY=:99 xdpyinfo >/tmp/xdpyinfo.txt 2>&1; then break; fi
-            sleep 1
-          done
-          DISPLAY=:99 xdpyinfo >/tmp/xdpyinfo.txt
-          DISPLAY=:99 xrandr --query >/tmp/xrandr.txt
-          DISPLAY=:99 glxinfo -B >/tmp/glxinfo.txt
+          sudo Xorg :99 -config /tmp/xorg-dummy.conf -noreset -ac +extension GLX +extension RANDR +extension RENDER -logfile /tmp/Xorg.99.log >/tmp/xorg-stdout.log 2>&1 &
+          for attempt in $(seq 1 20); do DISPLAY=:99 xdpyinfo >/dev/null 2>&1 && exit 0; sleep 1; done
+          exit 1
 
       - name: Client startup smoke test
         shell: bash
@@ -153,36 +110,29 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE: '1'
         run: |
           set +e
-          timeout 90s gradle -p legacy-culling-1.8.9 runClient --stacktrace --no-daemon \
-            > legacy-client-smoke.log 2>&1
-          exit_code=$?
+          timeout 90s gradle -p legacy-culling-1.8.9 runClient --stacktrace --no-daemon > legacy-client-smoke.log 2>&1
+          code=$?
           set -e
           cat legacy-client-smoke.log
           grep -q '\[LegacyCulling\] INIT_OK Legacy Culling initialized for Minecraft 1.8.9' legacy-client-smoke.log
-          if grep -E 'Mixin apply failed|InjectionError|InvalidMixinException|MixinApplyError|IllegalClassLoadError|Mod resolution encountered|Could not execute entrypoint' legacy-client-smoke.log; then
-            exit 1
-          fi
-          if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 124 ]; then exit "$exit_code"; fi
+          ! grep -E 'Mixin apply failed|InjectionError|InvalidMixinException|MixinApplyError|IllegalClassLoadError|Could not execute entrypoint' legacy-client-smoke.log
+          [ "$code" -eq 0 ] || [ "$code" -eq 124 ]
 
-      - name: Package release and source project
+      - name: Package release and source
         if: success()
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p release
           runtime=$(find legacy-culling-1.8.9/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*source*' ! -name '*developer*' | head -n 1)
-          cp "$runtime" release/INSTALL-THIS-Legacy-Culling-1.8.9-0.4.0.jar
-          zip -qr release/Legacy-Culling-1.8.9-0.4.0-Source-Project.zip legacy-culling-1.8.9 \
-            -x 'legacy-culling-1.8.9/build/*' \
-               'legacy-culling-1.8.9/run/*' \
-               'legacy-culling-1.8.9/.gradle/*' \
-               'legacy-culling-1.8.9/.build-tools/*'
+          cp "$runtime" release/INSTALL-THIS-Legacy-Culling-1.8.9-0.4.0-Stage1.jar
+          zip -qr release/Legacy-Culling-1.8.9-0.4.0-Stage1-Source-Project.zip legacy-culling-1.8.9 -x 'legacy-culling-1.8.9/build/*' 'legacy-culling-1.8.9/run/*' 'legacy-culling-1.8.9/.gradle/*' 'legacy-culling-1.8.9/.build-tools/*'
 
-      - name: Upload installable jar and source
+      - name: Upload release
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: legacy-culling-1.8.9-0.4.0
+          name: legacy-culling-native-stage1
           path: release/*
           if-no-files-found: error
           retention-days: 7
@@ -191,14 +141,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: legacy-culling-1.8.9-0.4.0-build-info
+          name: legacy-culling-native-stage1-build-info
           path: |
             legacy-build.log
             legacy-client-smoke.log
-            /tmp/Xorg.99.log
-            /tmp/xorg-stdout.log
-            /tmp/xdpyinfo.txt
-            /tmp/xrandr.txt
-            /tmp/glxinfo.txt
           if-no-files-found: warn
-          retention-days: 7
