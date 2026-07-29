@@ -1,0 +1,1 @@
+Run the corrected Stage 3 compiler and OpenGL startup pipeline.
