@@ -1,0 +1,24 @@
+name: Diagnose Legacy Culling 0.4.2 Patch
+
+on:
+  pull_request:
+    branches: [legacy-culling-0.4.2-ci]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify patch chunks
+        shell: bash
+        run: |
+          set -u
+          wc -c .github/legacy-culling-0.4.2-patch.part-*
+          cat .github/legacy-culling-0.4.2-patch.part-* > /tmp/lc042.b64
+          echo "combined=$(wc -c < /tmp/lc042.b64)"
+          base64 -d /tmp/lc042.b64 > /tmp/lc042.tar.gz || true
+          sha256sum /tmp/lc042.tar.gz
+          gzip -t /tmp/lc042.tar.gz || true
