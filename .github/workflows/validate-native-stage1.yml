@@ -1,0 +1,126 @@
+name: Validate Native Renderer Stage One
+
+on:
+  pull_request:
+    branches: [legacy-native-stage1-ci]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.1'
+
+      - name: Build and remap
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle -p legacy-culling-1.8.9 clean build --stacktrace 2>&1 | tee legacy-build.log
+
+      - name: Validate stage one package
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, pathlib, zipfile
+          libs = pathlib.Path('legacy-culling-1.8.9/build/libs')
+          runtime = next(p for p in libs.glob('*.jar') if 'source' not in p.name.lower() and 'developer' not in p.name.lower())
+          with zipfile.ZipFile(runtime) as z:
+              names = set(z.namelist())
+              mixins = json.loads(z.read('legacyculling.mixins.json'))
+              package = mixins['package'].replace('.', '/')
+              missing = [m for m in mixins['client'] if f'{package}/{m}.class' not in names]
+              assert not missing, missing
+              for name in (
+                  'com/memphiscat/legacyculling/renderer/NativeRendererCoordinator.class',
+                  'com/memphiscat/legacyculling/renderer/OccluderRules.class',
+                  'com/memphiscat/legacyculling/renderer/SectionVisibility.class',
+                  'com/memphiscat/legacyculling/renderer/SectionVisibilityHierarchy.class'):
+                  assert name in names, name
+          print(runtime)
+          PY
+
+      - name: Download assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            gradle -p legacy-culling-1.8.9 downloadAssets --stacktrace --no-daemon && exit 0
+            rm -rf "$HOME/.gradle/caches/fabric-loom/assets"
+            sleep $((attempt * 3))
+          done
+          exit 1
+
+      - name: Install display
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq xserver-xorg-core xserver-xorg-video-dummy mesa-utils x11-xserver-utils x11-utils
+          cat > /tmp/xorg-dummy.conf <<'XORG'
+          Section "ServerFlags"
+              Option "AutoAddDevices" "false"
+              Option "AllowMouseOpenFail" "true"
+          EndSection
+          Section "Device"
+              Identifier "DummyDevice"
+              Driver "dummy"
+              VideoRam 256000
+          EndSection
+          Section "Monitor"
+              Identifier "DummyMonitor"
+              HorizSync 5.0-1000.0
+              VertRefresh 5.0-200.0
+              Modeline "1280x720" 74.50 1280 1344 1472 1664 720 723 728 748 -HSync +Vsync
+          EndSection
+          Section "Screen"
+              Identifier "DummyScreen"
+              Device "DummyDevice"
+              Monitor "DummyMonitor"
+              DefaultDepth 24
+              SubSection "Display"
+                  Depth 24
+                  Modes "1280x720"
+              EndSubSection
+          EndSection
+          Section "ServerLayout"
+              Identifier "DummyLayout"
+              Screen "DummyScreen"
+          EndSection
+          XORG
+          sudo Xorg :99 -config /tmp/xorg-dummy.conf -noreset -ac +extension GLX +extension RANDR +extension RENDER -logfile /tmp/Xorg.99.log >/tmp/xorg-stdout.log 2>&1 &
+          for attempt in $(seq 1 20); do DISPLAY=:99 xdpyinfo >/dev/null 2>&1 && exit 0; sleep 1; done
+          exit 1
+
+      - name: Client startup smoke test
+        shell: bash
+        env:
+          DISPLAY: ':99'
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
+          set +e
+          timeout 90s gradle -p legacy-culling-1.8.9 runClient --stacktrace --no-daemon > legacy-client-smoke.log 2>&1
+          code=$?
+          set -e
+          cat legacy-client-smoke.log
+          grep -q '\[LegacyCulling\] INIT_OK Legacy Culling initialized for Minecraft 1.8.9' legacy-client-smoke.log
+          ! grep -E 'Mixin apply failed|InjectionError|InvalidMixinException|MixinApplyError|IllegalClassLoadError|Could not execute entrypoint' legacy-client-smoke.log
+          [ "$code" -eq 0 ] || [ "$code" -eq 124 ]
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-stage1-validation-logs
+          path: |
+            legacy-build.log
+            legacy-client-smoke.log
+          if-no-files-found: warn
