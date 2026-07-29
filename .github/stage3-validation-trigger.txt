@@ -1,1 +1,1 @@
-Rebuild the verified split Stage 3 overlay after refreshing the CI base.
+Run the corrected Stage 3 compiler and OpenGL startup pipeline.
