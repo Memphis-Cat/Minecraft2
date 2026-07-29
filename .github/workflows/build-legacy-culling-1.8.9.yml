@@ -6,37 +6,19 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Apply staged native renderer source
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -f .github/native-renderer-payload.b64 ]; then
-            base64 -d .github/native-renderer-payload.b64 | tar -xzf -
-            rm -f .github/native-renderer-payload.b64
-            rm -f .github/workflows/inspect-legacy-renderer.yml
-            git config user.name "legacy-culling-ci"
-            git config user.email "actions@users.noreply.github.com"
-            git add -A
-            if ! git diff --cached --quiet; then
-              git commit -m "Implement experimental native renderer backend"
-              git push origin HEAD:legacy-culling-1.8.9
-            fi
-          fi
 
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.5.1'
@@ -67,13 +49,13 @@ jobs:
               missing = [m for m in mixins['client'] if f'{package}/{m}.class' not in names]
               assert not missing, f'Missing mixin classes: {missing}'
               required = [
-                  'com/memphiscat/legacyculling/renderer/NativeRendererBackend.class',
-                  'com/memphiscat/legacyculling/renderer/NativeGpuDepthPyramid.class',
-                  'com/memphiscat/legacyculling/renderer/NativeSoftwareOcclusionBuffer.class',
-                  'com/memphiscat/legacyculling/renderer/NativeSectionVisibility.class',
+                  'com/memphiscat/legacyculling/renderer/NativeRendererCoordinator.class',
+                  'com/memphiscat/legacyculling/renderer/OccluderRules.class',
+                  'com/memphiscat/legacyculling/renderer/SectionVisibility.class',
+                  'com/memphiscat/legacyculling/renderer/SectionVisibilityHierarchy.class',
               ]
               absent = [name for name in required if name not in names]
-              assert not absent, f'Missing native renderer classes: {absent}'
+              assert not absent, f'Missing stage-one renderer classes: {absent}'
           print('Validated runtime:', runtime)
           PY
           runtime=$(find legacy-culling-1.8.9/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*source*' ! -name '*developer*' | head -n 1)
@@ -171,8 +153,8 @@ jobs:
           set -euo pipefail
           mkdir -p release
           runtime=$(find legacy-culling-1.8.9/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*source*' ! -name '*developer*' | head -n 1)
-          cp "$runtime" release/INSTALL-THIS-Legacy-Culling-1.8.9-0.4.0.jar
-          zip -qr release/Legacy-Culling-1.8.9-0.4.0-Source-Project.zip legacy-culling-1.8.9 \
+          cp "$runtime" release/INSTALL-THIS-Legacy-Culling-1.8.9-0.4.0-Stage1.jar
+          zip -qr release/Legacy-Culling-1.8.9-0.4.0-Stage1-Source-Project.zip legacy-culling-1.8.9 \
             -x 'legacy-culling-1.8.9/build/*' \
                'legacy-culling-1.8.9/run/*' \
                'legacy-culling-1.8.9/.gradle/*' \
@@ -182,7 +164,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: legacy-culling-1.8.9-0.4.0
+          name: legacy-culling-1.8.9-0.4.0-stage1
           path: release/*
           if-no-files-found: error
           retention-days: 7
@@ -191,7 +173,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: legacy-culling-1.8.9-0.4.0-build-info
+          name: legacy-culling-1.8.9-0.4.0-stage1-build-info
           path: |
             legacy-build.log
             legacy-client-smoke.log
