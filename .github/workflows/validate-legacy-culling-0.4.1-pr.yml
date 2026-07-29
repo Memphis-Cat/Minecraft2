@@ -1,0 +1,193 @@
+name: Validate Legacy Culling 0.4.1 PR
+
+on:
+  pull_request:
+    branches: [legacy-culling-0.4.1-ci]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct 0.4.1 source overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/legacy-culling-0.4.1-overlay.part-* > /tmp/legacy-culling-0.4.1-overlay.b64
+          test "$(wc -c < /tmp/legacy-culling-0.4.1-overlay.b64)" -eq 49140
+          base64 -d /tmp/legacy-culling-0.4.1-overlay.b64 > /tmp/legacy-culling-0.4.1-overlay.tar.gz
+          echo '74c53e740ce59b5f485e558daf327175c505198ee386ede3a3dfe0c0495c531d  /tmp/legacy-culling-0.4.1-overlay.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/legacy-culling-0.4.1-overlay.tar.gz -C legacy-culling-1.8.9
+          grep -q '^mod_version=0.4.1$' legacy-culling-1.8.9/gradle.properties
+          grep -q 'performanceFixRevision' legacy-culling-1.8.9/src/main/java/com/memphiscat/legacyculling/config/LegacyCullingConfig.java
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.1'
+
+      - name: Compile and remap
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle -p legacy-culling-1.8.9 clean build --stacktrace 2>&1 | tee legacy-culling-0.4.1-build.log
+
+      - name: Validate runtime jar
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import pathlib
+          import zipfile
+
+          libs = pathlib.Path('legacy-culling-1.8.9/build/libs')
+          candidates = [p for p in libs.glob('*.jar') if 'source' not in p.name.lower() and 'developer' not in p.name.lower()]
+          assert len(candidates) == 1, f'Expected one runtime jar, got: {candidates}'
+          runtime = candidates[0]
+          required = {
+              'fabric.mod.json',
+              'legacyculling.mixins.json',
+              'com/memphiscat/legacyculling/config/LegacyCullingConfig.class',
+              'com/memphiscat/legacyculling/renderer/NativeMeshCapture.class',
+              'com/memphiscat/legacyculling/renderer/NativeRegionTerrainRenderer.class',
+              'com/memphiscat/legacyculling/renderer/NativeRendererCoordinator.class',
+              'com/memphiscat/legacyculling/renderer/SectionVisibilityHierarchy.class',
+              'com/memphiscat/legacyculling/visibility/GpuVisibilityPipeline.class',
+              'com/memphiscat/legacyculling/visibility/LegacyVisibilityEngine.class',
+          }
+          with zipfile.ZipFile(runtime) as z:
+              names = set(z.namelist())
+              missing = sorted(required - names)
+              assert not missing, f'Missing 0.4.1 classes/resources: {missing}'
+              metadata = json.loads(z.read('fabric.mod.json'))
+              assert metadata['version'] == '0.4.1', metadata['version']
+              mixins = json.loads(z.read('legacyculling.mixins.json'))
+              package = mixins['package'].replace('.', '/')
+              missing_mixins = [m for m in mixins['client'] if f'{package}/{m}.class' not in names]
+              assert not missing_mixins, f'Missing mixin classes: {missing_mixins}'
+              font_class = z.read('com/memphiscat/legacyculling/mixin/FontRendererMixin.class')
+              assert b'glNewList' not in font_class, 'Unsafe rendered-text display-list cache returned'
+          print('Validated runtime:', runtime)
+          PY
+
+      - name: Download Minecraft assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          success=0
+          for attempt in 1 2 3; do
+            if gradle -p legacy-culling-1.8.9 downloadAssets --stacktrace --no-daemon; then success=1; break; fi
+            rm -rf "$HOME/.gradle/caches/fabric-loom/assets"
+            sleep $((attempt * 3))
+          done
+          test "$success" -eq 1
+
+      - name: Start dummy OpenGL display
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq xserver-xorg-core xserver-xorg-video-dummy mesa-utils x11-xserver-utils x11-utils
+          cat > /tmp/xorg-dummy.conf <<'XORG'
+          Section "ServerFlags"
+              Option "AutoAddDevices" "false"
+              Option "AllowMouseOpenFail" "true"
+          EndSection
+          Section "Device"
+              Identifier "DummyDevice"
+              Driver "dummy"
+              VideoRam 256000
+          EndSection
+          Section "Monitor"
+              Identifier "DummyMonitor"
+              HorizSync 5.0-1000.0
+              VertRefresh 5.0-200.0
+              Modeline "1280x720" 74.50 1280 1344 1472 1664 720 723 728 748 -HSync +Vsync
+          EndSection
+          Section "Screen"
+              Identifier "DummyScreen"
+              Device "DummyDevice"
+              Monitor "DummyMonitor"
+              DefaultDepth 24
+              SubSection "Display"
+                  Depth 24
+                  Modes "1280x720"
+              EndSubSection
+          EndSection
+          Section "ServerLayout"
+              Identifier "DummyLayout"
+              Screen "DummyScreen"
+          EndSection
+          XORG
+          sudo Xorg :99 -config /tmp/xorg-dummy.conf -noreset -ac +extension GLX +extension RANDR +extension RENDER -logfile /tmp/Xorg.99.log >/tmp/xorg-stdout.log 2>&1 &
+          for attempt in $(seq 1 20); do
+            if DISPLAY=:99 xdpyinfo >/tmp/xdpyinfo.txt 2>&1; then break; fi
+            sleep 1
+          done
+          DISPLAY=:99 xdpyinfo >/tmp/xdpyinfo.txt
+          DISPLAY=:99 glxinfo -B >/tmp/glxinfo.txt
+
+      - name: Client startup smoke test
+        shell: bash
+        env:
+          DISPLAY: ':99'
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
+          set +e
+          timeout 180s gradle -p legacy-culling-1.8.9 runClient --stacktrace --no-daemon > legacy-culling-0.4.1-smoke.log 2>&1
+          exit_code=$?
+          set -e
+          cat legacy-culling-0.4.1-smoke.log
+          grep -q '\[LegacyCulling\] INIT_OK Legacy Culling initialized for Minecraft 1.8.9' legacy-culling-0.4.1-smoke.log
+          if grep -E 'Mixin apply failed|InjectionError|InvalidMixinException|MixinApplyError|IllegalClassLoadError|Mod resolution encountered|Could not execute entrypoint|NoClassDefFoundError|NoSuchMethodError|GL ERROR' legacy-culling-0.4.1-smoke.log; then exit 1; fi
+          if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 124 ]; then exit "$exit_code"; fi
+
+      - name: Package release
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          runtime=$(find legacy-culling-1.8.9/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*source*' ! -name '*developer*' | head -n 1)
+          test -n "$runtime"
+          cp "$runtime" release/INSTALL-THIS-Legacy-Culling-1.8.9-0.4.1.jar
+          zip -qr release/Legacy-Culling-1.8.9-0.4.1-Source-Project.zip legacy-culling-1.8.9 \
+            -x 'legacy-culling-1.8.9/build/*' \
+               'legacy-culling-1.8.9/run/*' \
+               'legacy-culling-1.8.9/.gradle/*' \
+               'legacy-culling-1.8.9/.build-tools/*'
+          sha256sum release/INSTALL-THIS-Legacy-Culling-1.8.9-0.4.1.jar \
+                    release/Legacy-Culling-1.8.9-0.4.1-Source-Project.zip \
+            | tee release/SHA256SUMS.txt
+
+      - name: Upload release
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-culling-1.8.9-0.4.1
+          path: release/*
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload validation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-culling-0.4.1-validation
+          path: |
+            legacy-culling-0.4.1-build.log
+            legacy-culling-0.4.1-smoke.log
+            /tmp/Xorg.99.log
+            /tmp/xorg-stdout.log
+            /tmp/xdpyinfo.txt
+            /tmp/glxinfo.txt
+          if-no-files-found: warn
+          retention-days: 7
