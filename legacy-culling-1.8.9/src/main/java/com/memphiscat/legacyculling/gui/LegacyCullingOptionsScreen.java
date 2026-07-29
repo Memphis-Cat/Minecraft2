@@ -1,6 +1,7 @@
 package com.memphiscat.legacyculling.gui;
 
 import com.memphiscat.legacyculling.LegacyCullingMod;
+import com.memphiscat.legacyculling.renderer.NativeRendererCoordinator;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 
@@ -11,8 +12,9 @@ import java.util.List;
 public final class LegacyCullingOptionsScreen extends Screen {
     private static final int PAGE_SIZE = 12;
     private static final String[] FIELD_ORDER = {
-            "enabled", "minimalPerformanceOverlay", "showStatistics", "entityCulling",
-            "entityCullingIntervalMs", "occlusionHideFrames", "smartEntityCulling",
+            "enabled", "minimalPerformanceOverlay", "showStatistics",
+            "rendererBackend", "sectionVisibilityHierarchy", "sectionGraphBuildsPerFrame",
+            "entityCulling", "entityCullingIntervalMs", "occlusionHideFrames", "smartEntityCulling",
             "dontCullEnderDragons", "dontCullWithers", "dontCullPlayerNametags", "dontCullEntityNametags",
             "dontCullArmorstandNametags", "checkArmorstandRules", "entityBackfaceCulling", "playerBackfaceCulling",
             "disableArmorstands", "disableSemitransparentPlayers", "disableItemFrames", "disableMappedItemFrames",
@@ -39,8 +41,7 @@ public final class LegacyCullingOptionsScreen extends Screen {
         this.parent = parent;
         for (String name : FIELD_ORDER) {
             try {
-                Field field = LegacyCullingMod.CONFIG.getClass().getField(name);
-                options.add(new Option(field));
+                options.add(new Option(LegacyCullingMod.CONFIG.getClass().getField(name)));
             } catch (NoSuchFieldException ignored) {
             }
         }
@@ -83,6 +84,7 @@ public final class LegacyCullingOptionsScreen extends Screen {
             if (index >= 0 && index < options.size()) {
                 options.get(index).cycle();
                 LegacyCullingMod.CONFIG.save();
+                NativeRendererCoordinator.reset();
                 button.message = options.get(index).label();
             }
         }
@@ -116,6 +118,10 @@ public final class LegacyCullingOptionsScreen extends Screen {
 
         String label() {
             try {
+                if (field.getName().equals("rendererBackend")) {
+                    int value = field.getInt(LegacyCullingMod.CONFIG);
+                    return "Renderer Backend: " + (value == 1 ? "Native Experimental" : "Compatibility");
+                }
                 return humanize(field.getName()) + ": " + field.get(LegacyCullingMod.CONFIG);
             } catch (IllegalAccessException exception) {
                 return humanize(field.getName()) + ": error";
@@ -166,8 +172,10 @@ public final class LegacyCullingOptionsScreen extends Screen {
         }
 
         private static int minimum(String name) {
+            if (name.equals("rendererBackend")) return 0;
             if (name.equals("entityCullingIntervalMs")) return 0;
             if (name.equals("occlusionHideFrames")) return 2;
+            if (name.equals("sectionGraphBuildsPerFrame")) return 1;
             if (name.equals("maxParticles")) return 500;
             if (name.equals("particleCellLimit")) return 8;
             if (name.equals("animationTickRate")) return 100;
@@ -186,6 +194,8 @@ public final class LegacyCullingOptionsScreen extends Screen {
         }
 
         private static int maximum(String name) {
+            if (name.equals("rendererBackend")) return 1;
+            if (name.equals("sectionGraphBuildsPerFrame")) return 16;
             if (name.equals("entityCullingIntervalMs")) return 250;
             if (name.equals("occlusionHideFrames")) return 12;
             if (name.equals("maxParticles")) return 20000;

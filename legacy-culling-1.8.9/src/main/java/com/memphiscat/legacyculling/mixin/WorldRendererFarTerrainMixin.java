@@ -1,6 +1,7 @@
 package com.memphiscat.legacyculling.mixin;
 
 import com.memphiscat.legacyculling.performance.LegacyFarTerrainRenderer;
+import com.memphiscat.legacyculling.renderer.NativeRendererCoordinator;
 import net.minecraft.client.render.RenderLayer;
 import net.minecraft.client.render.WorldRenderer;
 import net.minecraft.client.world.ClientWorld;
@@ -27,10 +28,12 @@ public abstract class WorldRendererFarTerrainMixin {
                                                      int maxX, int maxY, int maxZ,
                                                      CallbackInfo ci) {
         LegacyFarTerrainRenderer.markRegion(minX, minZ, maxX, maxZ);
+        NativeRendererCoordinator.invalidateRegion(minX, minY, minZ, maxX, maxY, maxZ);
     }
 
     @Inject(method = "setWorld", at = @At("HEAD"))
     private void legacyculling$clearFarTerrain(ClientWorld world, CallbackInfo ci) {
         LegacyFarTerrainRenderer.clear();
+        NativeRendererCoordinator.reset();
     }
 }
