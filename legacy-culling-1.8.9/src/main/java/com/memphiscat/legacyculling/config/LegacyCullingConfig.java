@@ -18,12 +18,6 @@ public final class LegacyCullingConfig {
     public boolean enabled = true;
     public boolean minimalPerformanceOverlay = true;
     public boolean showStatistics = true;
-
-    // 0 = vanilla compatibility, 1 = native renderer experimental.
-    public int rendererBackend = 0;
-    public boolean sectionVisibilityHierarchy = true;
-    public int sectionGraphBuildsPerFrame = 2;
-
     public boolean entityCulling = true;
     public int entityCullingIntervalMs = 10;
     public int occlusionHideFrames = 3;
@@ -77,12 +71,14 @@ public final class LegacyCullingConfig {
     public boolean lowAnimationTick = true;
     public int animationTickRate = 500;
 
+    // Smooth, FPS-aware chunk rebuild scheduling.
     public boolean limitChunkUpdates = true;
     public boolean adaptiveChunkLoading = true;
     public int chunkUpdateLimit = 120;
     public int chunkBurstLimit = 16;
     public int chunkTargetFps = 60;
 
+    // Cached, previously received terrain rendered as a low-detail height/color mesh.
     public boolean farTerrainLod = true;
     public int farTerrainDistance = 32;
     public int farTerrainSampleStep = 4;
@@ -92,6 +88,8 @@ public final class LegacyCullingConfig {
     public int farTerrainMinFps = 50;
     public boolean farTerrainShaderSafety = true;
 
+    // optimizedFontRenderer is retained for config compatibility, but now only
+    // enables safe text measurement caches. Complete draw-call caching was removed.
     public boolean optimizedFontRenderer = true;
     public boolean cacheFontData = true;
     public boolean optimizedWorldSwapping = true;
@@ -122,8 +120,11 @@ public final class LegacyCullingConfig {
             String raw = properties.getProperty(field.getName());
             if (raw == null) continue;
             try {
-                if (field.getType() == boolean.class) field.setBoolean(this, Boolean.parseBoolean(raw.trim()));
-                else if (field.getType() == int.class) field.setInt(this, Integer.parseInt(raw.trim()));
+                if (field.getType() == boolean.class) {
+                    field.setBoolean(this, Boolean.parseBoolean(raw.trim()));
+                } else if (field.getType() == int.class) {
+                    field.setInt(this, Integer.parseInt(raw.trim()));
+                }
             } catch (IllegalAccessException | NumberFormatException exception) {
                 LegacyCullingMod.LOGGER.warn("Ignoring invalid setting {}={}", field.getName(), raw);
             }
@@ -131,8 +132,6 @@ public final class LegacyCullingConfig {
     }
 
     private void clamp() {
-        rendererBackend = clamp(rendererBackend, 0, 1);
-        sectionGraphBuildsPerFrame = clamp(sectionGraphBuildsPerFrame, 1, 16);
         entityCullingIntervalMs = clamp(entityCullingIntervalMs, 0, 1000);
         occlusionHideFrames = clamp(occlusionHideFrames, 2, 12);
         tileEntityRenderDistance = clamp(tileEntityRenderDistance, 16, 512);

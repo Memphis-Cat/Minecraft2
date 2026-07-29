@@ -1,6 +1,5 @@
 package com.memphiscat.legacyculling.mixin;
 
-import com.memphiscat.legacyculling.renderer.NativeRendererCoordinator;
 import com.memphiscat.legacyculling.visibility.LegacyDepthPyramid;
 import com.memphiscat.legacyculling.visibility.LegacyFrameState;
 import net.minecraft.client.render.GameRenderer;
@@ -16,10 +15,8 @@ public abstract class GameRendererCullingMixin {
     @Inject(method = "renderWorld(IFJ)V", at = @At("HEAD"))
     private void legacyculling$beginVisibilityFrame(int pass, float tickDelta, long finishTimeNano,
                                                      CallbackInfo ci) {
-        if (pass == 2 || pass == 0) {
-            LegacyFrameState.beginFrame();
-            NativeRendererCoordinator.beginFrame();
-        }
+        // Pass 2 is the normal renderer. Pass 0 is the first anaglyph eye.
+        if (pass == 2 || pass == 0) LegacyFrameState.beginFrame();
     }
 
     @Inject(method = "renderWorld(IFJ)V",

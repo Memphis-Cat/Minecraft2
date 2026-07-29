@@ -1,7 +1,6 @@
 package com.memphiscat.legacyculling.mixin;
 
 import com.memphiscat.legacyculling.LegacyCullingMod;
-import com.memphiscat.legacyculling.renderer.NativeRendererCoordinator;
 import com.memphiscat.legacyculling.visibility.CullingStats;
 import com.memphiscat.legacyculling.visibility.LegacyVisibilityEngine;
 import com.mojang.blaze3d.platform.GlStateManager;
@@ -33,7 +32,6 @@ public abstract class EntityRenderDispatcherMixin {
             cir.setReturnValue(false);
             return;
         }
-        if (entity != null && NativeRendererCoordinator.definitelyReachable(entity.getBoundingBox())) return;
         if (LegacyVisibilityEngine.shouldCullEntity(entity, cameraX, cameraY, cameraZ)) {
             cir.setReturnValue(false);
         }
