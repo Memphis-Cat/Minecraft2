@@ -18,8 +18,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -f .github/stage3-overlay.tar.gz
-          tar -xzf .github/stage3-overlay.tar.gz -C legacy-culling-1.8.9
+          cat .github/stage3-overlay.part-* > /tmp/stage3-overlay.b64
+          test "$(wc -c < /tmp/stage3-overlay.b64)" -eq 38848
+          base64 -d /tmp/stage3-overlay.b64 > /tmp/stage3-overlay.tar.gz
+          echo '7941c98d9c84e7d876328e060071898a83ec408d467ea9e79e6005c0bd63f0cd  /tmp/stage3-overlay.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/stage3-overlay.tar.gz -C legacy-culling-1.8.9
           grep -q 'mod_version=0.4.0-stage3' legacy-culling-1.8.9/gradle.properties
 
       - uses: actions/setup-java@v4
