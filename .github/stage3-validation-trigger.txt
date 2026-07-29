@@ -1,1 +1,1 @@
-Compile, remap, startup-test, and package Legacy Culling 0.4.0 Stage 3 from the attached clean source overlay.
+Rebuild the verified split Stage 3 overlay after refreshing the CI base.
