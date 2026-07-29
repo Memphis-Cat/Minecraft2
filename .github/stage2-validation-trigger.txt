@@ -1,0 +1,1 @@
+Validate clean Legacy Culling 0.4.0 stage-two terrain batching.
