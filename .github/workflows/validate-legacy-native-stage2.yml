@@ -1,0 +1,146 @@
+name: Validate Legacy Native Stage Two
+
+on:
+  pull_request:
+    branches: [legacy-native-stage2-ci]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.1'
+
+      - name: Compile and remap
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle -p legacy-culling-1.8.9 clean build --stacktrace 2>&1 | tee legacy-stage2-build.log
+
+      - name: Validate packaged runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import pathlib
+          import zipfile
+          libs = pathlib.Path('legacy-culling-1.8.9/build/libs')
+          runtime = next(p for p in libs.glob('*.jar') if 'source' not in p.name.lower() and 'developer' not in p.name.lower())
+          required = {
+              'com/memphiscat/legacyculling/renderer/NativeMeshCapture.class',
+              'com/memphiscat/legacyculling/renderer/NativeRegionTerrainRenderer.class',
+              'com/memphiscat/legacyculling/renderer/NativeRendererCoordinator.class',
+              'com/memphiscat/legacyculling/mixin/AbstractChunkRenderManagerAccessor.class',
+              'com/memphiscat/legacyculling/mixin/VertexBufferCaptureMixin.class',
+              'com/memphiscat/legacyculling/mixin/VboChunkRenderManagerMixin.class',
+          }
+          with zipfile.ZipFile(runtime) as z:
+              names = set(z.namelist())
+              absent = sorted(required - names)
+              assert not absent, f'Missing stage two classes: {absent}'
+              mixins = json.loads(z.read('legacyculling.mixins.json'))
+              package = mixins['package'].replace('.', '/')
+              missing = [m for m in mixins['client'] if f'{package}/{m}.class' not in names]
+              assert not missing, f'Missing mixin classes: {missing}'
+          print('Validated runtime:', runtime)
+          PY
+
+      - name: Download Minecraft assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          success=0
+          for attempt in 1 2 3; do
+            if gradle -p legacy-culling-1.8.9 downloadAssets --stacktrace --no-daemon; then success=1; break; fi
+            rm -rf "$HOME/.gradle/caches/fabric-loom/assets"
+            sleep $((attempt * 3))
+          done
+          test "$success" -eq 1
+
+      - name: Install dummy OpenGL display
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq xserver-xorg-core xserver-xorg-video-dummy mesa-utils x11-xserver-utils x11-utils
+          cat > /tmp/xorg-dummy.conf <<'XORG'
+          Section "ServerFlags"
+              Option "AutoAddDevices" "false"
+              Option "AllowMouseOpenFail" "true"
+          EndSection
+          Section "Device"
+              Identifier "DummyDevice"
+              Driver "dummy"
+              VideoRam 256000
+          EndSection
+          Section "Monitor"
+              Identifier "DummyMonitor"
+              HorizSync 5.0-1000.0
+              VertRefresh 5.0-200.0
+              Modeline "1280x720" 74.50 1280 1344 1472 1664 720 723 728 748 -HSync +Vsync
+          EndSection
+          Section "Screen"
+              Identifier "DummyScreen"
+              Device "DummyDevice"
+              Monitor "DummyMonitor"
+              DefaultDepth 24
+              SubSection "Display"
+                  Depth 24
+                  Modes "1280x720"
+              EndSubSection
+          EndSection
+          Section "ServerLayout"
+              Identifier "DummyLayout"
+              Screen "DummyScreen"
+          EndSection
+          XORG
+          sudo Xorg :99 -config /tmp/xorg-dummy.conf -noreset -ac +extension GLX +extension RANDR +extension RENDER -logfile /tmp/Xorg.99.log >/tmp/xorg-stdout.log 2>&1 &
+          for attempt in $(seq 1 20); do
+            if DISPLAY=:99 xdpyinfo >/tmp/xdpyinfo.txt 2>&1; then break; fi
+            sleep 1
+          done
+          DISPLAY=:99 xdpyinfo >/tmp/xdpyinfo.txt
+          DISPLAY=:99 glxinfo -B >/tmp/glxinfo.txt
+
+      - name: Client startup smoke test
+        shell: bash
+        env:
+          DISPLAY: ':99'
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
+          set +e
+          timeout 90s gradle -p legacy-culling-1.8.9 runClient --stacktrace --no-daemon > legacy-stage2-smoke.log 2>&1
+          exit_code=$?
+          set -e
+          cat legacy-stage2-smoke.log
+          grep -q '\[LegacyCulling\] INIT_OK Legacy Culling initialized for Minecraft 1.8.9' legacy-stage2-smoke.log
+          if grep -E 'Mixin apply failed|InjectionError|InvalidMixinException|MixinApplyError|IllegalClassLoadError|Mod resolution encountered|Could not execute entrypoint' legacy-stage2-smoke.log; then exit 1; fi
+          if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 124 ]; then exit "$exit_code"; fi
+
+      - name: Upload validation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-native-stage2-validation
+          path: |
+            legacy-stage2-build.log
+            legacy-stage2-smoke.log
+            /tmp/Xorg.99.log
+            /tmp/xorg-stdout.log
+            /tmp/xdpyinfo.txt
+            /tmp/glxinfo.txt
+          if-no-files-found: warn
+          retention-days: 7
