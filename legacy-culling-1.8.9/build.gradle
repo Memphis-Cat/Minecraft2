@@ -59,6 +59,16 @@ tasks.named('sourcesJar', Jar).configure {
     exclude 'legacyculling.mixins.json'
 }
 
+// Used by CI to inspect the exact mapped 1.8.9 renderer API before native-backend work.
+tasks.register('writeRendererClasspath') {
+    dependsOn tasks.named('classes')
+    doLast {
+        def output = layout.buildDirectory.file('renderer-classpath.txt').get().asFile
+        output.parentFile.mkdirs()
+        output.text = sourceSets.main.compileClasspath.asPath
+    }
+}
+
 // The CI starts one explicitly configured X server. Loom's automatic xvfb wrapper
 // must be disabled or old LWJGL 2 sees a nested display without XRandR modes.
 tasks.named('runClient').configure {
