@@ -1,6 +1,7 @@
 package com.memphiscat.legacyculling.mixin;
 
 import com.memphiscat.legacyculling.LegacyCullingMod;
+import com.memphiscat.legacyculling.renderer.NativeRendererCoordinator;
 import com.memphiscat.legacyculling.visibility.CullingStats;
 import com.memphiscat.legacyculling.visibility.LegacyVisibilityEngine;
 import net.minecraft.client.MinecraftClient;
@@ -8,6 +9,7 @@ import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleManager;
 import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.entity.Entity;
+import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -76,7 +78,7 @@ public abstract class ParticleManagerMixin {
     private void legacyculling$cullParticleDraw(Particle particle, BufferBuilder buffer, Entity camera,
                                                  float tickDelta, float rotationX, float rotationXZ,
                                                  float rotationZ, float rotationYZ, float rotationXY) {
-        if (!LegacyVisibilityEngine.shouldCullParticle(particle.x, particle.y, particle.z)) {
+        if (legacyculling$shouldRenderParticle(particle)) {
             particle.draw(buffer, camera, tickDelta, rotationX, rotationXZ, rotationZ, rotationYZ, rotationXY);
         }
     }
@@ -86,9 +88,17 @@ public abstract class ParticleManagerMixin {
     private void legacyculling$cullLitParticleDraw(Particle particle, BufferBuilder buffer, Entity camera,
                                                     float tickDelta, float rotationX, float rotationXZ,
                                                     float rotationZ, float rotationYZ, float rotationXY) {
-        if (!LegacyVisibilityEngine.shouldCullParticle(particle.x, particle.y, particle.z)) {
+        if (legacyculling$shouldRenderParticle(particle)) {
             particle.draw(buffer, camera, tickDelta, rotationX, rotationXZ, rotationZ, rotationYZ, rotationXY);
         }
+    }
+
+    @Unique
+    private static boolean legacyculling$shouldRenderParticle(Particle particle) {
+        Box box = new Box(particle.x - 0.2D, particle.y - 0.2D, particle.z - 0.2D,
+                particle.x + 0.2D, particle.y + 0.2D, particle.z + 0.2D);
+        return NativeRendererCoordinator.definitelyReachable(box)
+                || !LegacyVisibilityEngine.shouldCullParticle(particle.x, particle.y, particle.z);
     }
 
     @Unique
